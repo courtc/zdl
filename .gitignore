@@ -2,3 +2,6 @@
 libzdl.so
 *.vcxproj.user
 *.o
+*~
+*.swp
+Debug
