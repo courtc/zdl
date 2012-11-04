@@ -149,6 +149,16 @@ zdl_window_t zdl_window_create(int width, int height, int fullscreen)
 
 	w->wm_delete_window = XInternAtom(w->display, "WM_DELETE_WINDOW", False);
 
+	if (fullscreen) {
+		width = XDisplayWidth(w->display, w->default_screen);
+		height = XDisplayHeight(w->display, w->default_screen);
+
+		w->masked.width = w->width;
+		w->masked.height = w->height;
+		w->width = width;
+		w->height = height;
+	}
+
 	if (zdl_window_reconfigure(w, width, height, fullscreen)) {
 		XCloseDisplay(w->display);
 		free(w);
