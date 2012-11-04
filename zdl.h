@@ -1,5 +1,15 @@
 #pragma once
 
+#ifdef _WIN32
+#ifdef ZDL_INTERNAL
+#define ZDL_EXPORT __declspec(dllexport)
+#else
+#define ZDL_EXPORT __declspec(dllimport)
+#endif
+#else
+#define ZDL_EXPORT
+#endif
+
 enum zdl_keymod {
 	ZDL_KEYMOD_NONE   = 0,
 	ZDL_KEYMOD_LSHIFT = (1 <<  0),
@@ -214,16 +224,16 @@ typedef struct zdl_window *zdl_window_t;
 extern "C" {
 #endif
 
-zdl_window_t zdl_window_create(int width, int height, int fullscreen);
-void zdl_window_destroy(zdl_window_t w);
-void zdl_window_set_title(zdl_window_t w, const char *icon, const char *name);
-void zdl_window_set_fullscreen(zdl_window_t w, int fullscreen);
-int  zdl_window_get_fullscreen(const zdl_window_t w);
-void zdl_window_set_size(zdl_window_t w, int width, int height);
-void zdl_window_get_size(const zdl_window_t w, int *width, int *height);
-void zdl_window_show_cursor(zdl_window_t w, int shown);
-int  zdl_window_poll_event(zdl_window_t w, struct zdl_event *ev);
-void zdl_window_swap(zdl_window_t w);
+ZDL_EXPORT zdl_window_t zdl_window_create(int width, int height, int fullscreen);
+ZDL_EXPORT void zdl_window_destroy(zdl_window_t w);
+ZDL_EXPORT void zdl_window_set_title(zdl_window_t w, const char *icon, const char *name);
+ZDL_EXPORT void zdl_window_set_fullscreen(zdl_window_t w, int fullscreen);
+ZDL_EXPORT int  zdl_window_get_fullscreen(const zdl_window_t w);
+ZDL_EXPORT void zdl_window_set_size(zdl_window_t w, int width, int height);
+ZDL_EXPORT void zdl_window_get_size(const zdl_window_t w, int *width, int *height);
+ZDL_EXPORT void zdl_window_show_cursor(zdl_window_t w, int shown);
+ZDL_EXPORT int  zdl_window_poll_event(zdl_window_t w, struct zdl_event *ev);
+ZDL_EXPORT void zdl_window_swap(zdl_window_t w);
 
 #ifdef __cplusplus
 }
@@ -248,7 +258,7 @@ public:
 	void setFullscreen(bool fullscreen)
 	{ zdl_window_set_fullscreen(m_win, fullscreen); }
 	bool getFullscreen(void) const
-	{ return zdl_window_get_fullscreen(m_win); }
+	{ return !!zdl_window_get_fullscreen(m_win); }
 
 	void setSize(int w, int h)
 	{ zdl_window_set_size(m_win, w, h); }

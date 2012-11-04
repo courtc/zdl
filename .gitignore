@@ -1,3 +1,4 @@
-zdltest
+./zdltest
 libzdl.so
+*.vcxproj.user
 *.o
