@@ -410,23 +410,23 @@ zdl_window_t zdl_window_create(int width, int height, int fullscreen)
 
 	hInstance = GetModuleHandle(NULL);
 	w->wcex.cbSize = sizeof(WNDCLASSEX);
-    w->wcex.style          = CS_OWNDC;
-    w->wcex.lpfnWndProc    = zdl_WndProc;
-    w->wcex.cbClsExtra     = 0;
-    w->wcex.cbWndExtra     = sizeof(PVOID);
-    w->wcex.hInstance      = hInstance;
-    w->wcex.hIcon          = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_APPLICATION));
-    w->wcex.hCursor        = LoadCursor(NULL, IDC_ARROW);
-    w->wcex.hbrBackground  = (HBRUSH)(COLOR_WINDOW+1);
-    w->wcex.lpszMenuName   = NULL;
-    w->wcex.lpszClassName  = _T("win32app");
-    w->wcex.hIconSm        = LoadIcon(w->wcex.hInstance, MAKEINTRESOURCE(IDI_APPLICATION));
+	w->wcex.style          = CS_OWNDC;
+	w->wcex.lpfnWndProc    = zdl_WndProc;
+	w->wcex.cbClsExtra     = 0;
+	w->wcex.cbWndExtra     = sizeof(PVOID);
+	w->wcex.hInstance      = hInstance;
+	w->wcex.hIcon          = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_APPLICATION));
+	w->wcex.hCursor        = LoadCursor(NULL, IDC_ARROW);
+	w->wcex.hbrBackground  = (HBRUSH)(COLOR_WINDOW+1);
+	w->wcex.lpszMenuName   = NULL;
+	w->wcex.lpszClassName  = _T("win32app");
+	w->wcex.hIconSm        = LoadIcon(w->wcex.hInstance, MAKEINTRESOURCE(IDI_APPLICATION));
 	
 	if (!RegisterClassEx(&w->wcex)) {
 		fprintf(stderr, "Unable to register class\n");
 		free(w);
 		return ZDL_WINDOW_INVALID;
-    }
+	}
 
 	w->width = width;
 	w->height = height;
