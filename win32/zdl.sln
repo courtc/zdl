@@ -1,0 +1,29 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual C++ Express 2010
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "zdl", "zdl.vcxproj", "{EF5BA6FA-1156-89BD-5C1D-A3E813B490D9}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "zdltest", "zdltest\zdltest.vcxproj", "{6A6B8686-6FFE-4E24-9B07-84C18D7D2B0B}"
+	ProjectSection(ProjectDependencies) = postProject
+		{EF5BA6FA-1156-89BD-5C1D-A3E813B490D9} = {EF5BA6FA-1156-89BD-5C1D-A3E813B490D9}
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{EF5BA6FA-1156-89BD-5C1D-A3E813B490D9}.Debug|Win32.ActiveCfg = Debug|Win32
+		{EF5BA6FA-1156-89BD-5C1D-A3E813B490D9}.Debug|Win32.Build.0 = Debug|Win32
+		{EF5BA6FA-1156-89BD-5C1D-A3E813B490D9}.Release|Win32.ActiveCfg = Release|Win32
+		{EF5BA6FA-1156-89BD-5C1D-A3E813B490D9}.Release|Win32.Build.0 = Release|Win32
+		{6A6B8686-6FFE-4E24-9B07-84C18D7D2B0B}.Debug|Win32.ActiveCfg = Debug|Win32
+		{6A6B8686-6FFE-4E24-9B07-84C18D7D2B0B}.Debug|Win32.Build.0 = Debug|Win32
+		{6A6B8686-6FFE-4E24-9B07-84C18D7D2B0B}.Release|Win32.ActiveCfg = Release|Win32
+		{6A6B8686-6FFE-4E24-9B07-84C18D7D2B0B}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
