@@ -11,7 +11,6 @@
 
 #include "zdl.h"
 
-
 int main(int argc, char **argv)
 {
 	ZDL::Window *window = new ZDL::Window(320, 240, false);

@@ -6,6 +6,7 @@
 #include <tchar.h>
 
 #define ZDL_INTERNAL
+#define ZDL_NO_WINMAIN
 #include "zdl.h"
 
 struct zdl_queue_item {
@@ -92,6 +93,7 @@ struct zdl_window {
 	HDC hDeviceContext;
 	struct zdl_queue queue;
 	struct { int x, y; } lastmotion;
+	DWORD style;
 };
 
 static int zdl_translate(WPARAM wParam, LPARAM lParam, struct zdl_event *ev)
@@ -357,19 +359,54 @@ static LRESULT CALLBACK zdl_WndProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
 		return DefWindowProc(hwnd, message, wParam, lParam);
 	}
 	return 0;
-} 
+}
+
+static void zdl_adjust_size(zdl_window_t w, int *width, int *height, int fullscreen)
+{
+	RECT rect;
+
+	rect.left = 0;
+	rect.top = 0;
+
+	if (fullscreen) {
+		MONITORINFO minfo;
+		HMONITOR mh;
+
+		mh = MonitorFromWindow(w->window,
+				w->window == NULL ?
+					MONITOR_DEFAULTTOPRIMARY :
+					MONITOR_DEFAULTTONEAREST);
+		minfo.cbSize = sizeof(MONITORINFO);
+		GetMonitorInfo(mh, &minfo);
+		rect.right = minfo.rcMonitor.right - minfo.rcMonitor.left;
+		rect.bottom = minfo.rcMonitor.bottom - minfo.rcMonitor.top;
+	} else {
+		rect.right = *width;
+		rect.bottom = *height;
+	}
+
+	AdjustWindowRect(&rect, fullscreen ? WS_DISABLED : WS_OVERLAPPEDWINDOW, FALSE);
+	*width = rect.right - rect.left;
+	*height = rect.bottom - rect.top;
+}
 
 zdl_window_t zdl_window_create(int width, int height, int fullscreen)
 {
 	zdl_window_t w;
 	HINSTANCE hInstance;
+	BYTE digitizerStatus = (BYTE)GetSystemMetrics(SM_DIGITIZER);
+
+	if ((digitizerStatus & 0xCF) == 0) {
+		//MessageBox(0, "No touch support is currently available", "Error", MB_OK);
+	} else {
+		//MessageBox(0, "Touch support is currently available", "Success", MB_OK);
+	}
 
 	w = (zdl_window_t)calloc(1, sizeof(*w));
 	if (w == NULL)
 		return ZDL_WINDOW_INVALID;
 
 	zdl_queue_create(&w->queue);
-
 
 	hInstance = GetModuleHandle(NULL);
 	w->wcex.cbSize = sizeof(WNDCLASSEX);
@@ -393,12 +430,13 @@ zdl_window_t zdl_window_create(int width, int height, int fullscreen)
 
 	w->width = width;
 	w->height = height;
-	w->fullscreen = -fullscreen;
+	w->fullscreen = fullscreen;
 
+	zdl_adjust_size(w, &width, &height, fullscreen);
 	w->window = CreateWindowEx(0,
 			_T("win32app"),
 			_T("win32app"),
-			WS_OVERLAPPEDWINDOW,
+			fullscreen ? WS_DISABLED : WS_OVERLAPPEDWINDOW,
 			CW_USEDEFAULT, CW_USEDEFAULT,
 			width, height,
 			NULL,
@@ -412,9 +450,6 @@ zdl_window_t zdl_window_create(int width, int height, int fullscreen)
 		free(w);
 		return ZDL_WINDOW_INVALID;
 	}
-
-	if (w->fullscreen)
-		zdl_window_set_fullscreen(w, fullscreen);
 
 	ShowWindow(w->window, SW_SHOWNORMAL);
 
@@ -431,26 +466,21 @@ void zdl_window_destroy(zdl_window_t w)
 
 void zdl_window_set_fullscreen(zdl_window_t w, int fullscreen)
 {
-	unsigned int width, height;
+	int width, height;
 
 	if (fullscreen == w->fullscreen)
 		return;
 
 	if (fullscreen) {
-		HMONITOR mh;
-		MONITORINFO minfo;
-		w->masked.width = w->width;
-		w->masked.height = w->height;
-		mh = MonitorFromWindow(w->window, MONITOR_DEFAULTTONEAREST);
-		minfo.cbSize = sizeof(MONITORINFO);
-		GetMonitorInfo(mh, &minfo);
-		width = minfo.rcMonitor.right - minfo.rcMonitor.left;
-		height = minfo.rcMonitor.bottom - minfo.rcMonitor.top;
+		w->masked.width = height = w->width;
+		w->masked.height = width = w->height;
+		zdl_adjust_size(w, &width, &height, fullscreen);
 		SetWindowLong(w->window, GWL_STYLE, WS_DISABLED);
-		SetWindowPos(w->window,0,minfo.rcMonitor.left,minfo.rcMonitor.top,width,height,SWP_NOZORDER|SWP_NOACTIVATE);
+		SetWindowPos(w->window,0,0,0,width,height,SWP_NOZORDER|SWP_NOACTIVATE);
 	} else {
 		width = w->masked.width;
 		height = w->masked.height;
+		zdl_adjust_size(w, &width, &height, fullscreen);
 		SetWindowLong(w->window, GWL_STYLE, WS_OVERLAPPEDWINDOW);
 		SetWindowPos(w->window,0,0,0,width,height,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
 	}
@@ -521,4 +551,23 @@ void zdl_window_set_title(zdl_window_t w, const char *icon, const char *name)
 	w->title = _strdup(name);
 
 	SetWindowText(w->window, name);
+}
+
+int zdl_win32_entry(int (* main)(int, char **))
+{
+	char *argv[256];
+	const char *cmdline = (const char *)GetCommandLineA();
+	char *dup = _strdup(cmdline);
+	char *tok;
+	int rc, i;
+
+	dup[strlen(dup) - 1] = 0;
+	argv[0] = strtok_s(dup + 1, " \t", &tok);
+	for (i = 0; argv[i] != NULL; ++i)
+		argv[i + 1] = strtok_s(NULL, " \t", &tok);
+
+	rc = main(i, argv);
+
+	free(dup);
+	return rc;
 }

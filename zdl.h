@@ -1,13 +1,30 @@
 #pragma once
 
+#ifdef __cplusplus
+#define ZDL_EXTERN extern "C"
+#else
+#define ZDL_EXTERN
+#endif
+
 #ifdef _WIN32
 #ifdef ZDL_INTERNAL
-#define ZDL_EXPORT __declspec(dllexport)
+#define ZDL_EXPORT ZDL_EXTERN __declspec(dllexport)
 #else
-#define ZDL_EXPORT __declspec(dllimport)
+#define ZDL_EXPORT ZDL_EXTERN __declspec(dllimport)
 #endif
 #else
-#define ZDL_EXPORT
+#define ZDL_EXPORT ZDL_EXTERN
+#endif
+
+#ifdef _WIN32
+ZDL_EXPORT int zdl_win32_entry(int (* main)(int, char **));
+#ifndef ZDL_NO_WINMAIN
+ZDL_EXTERN int main(int argc, char **argv);
+int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+{
+	return zdl_win32_entry(main);
+}
+#endif
 #endif
 
 enum zdl_keymod {
@@ -220,10 +237,6 @@ struct zdl_event {
 typedef struct zdl_window *zdl_window_t;
 #define ZDL_WINDOW_INVALID ((zdl_window_t)0)
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 ZDL_EXPORT zdl_window_t zdl_window_create(int width, int height, int fullscreen);
 ZDL_EXPORT void zdl_window_destroy(zdl_window_t w);
 ZDL_EXPORT void zdl_window_set_title(zdl_window_t w, const char *icon, const char *name);
@@ -234,10 +247,6 @@ ZDL_EXPORT void zdl_window_get_size(const zdl_window_t w, int *width, int *heigh
 ZDL_EXPORT void zdl_window_show_cursor(zdl_window_t w, int shown);
 ZDL_EXPORT int  zdl_window_poll_event(zdl_window_t w, struct zdl_event *ev);
 ZDL_EXPORT void zdl_window_swap(zdl_window_t w);
-
-#ifdef __cplusplus
-}
-#endif
 
 #ifdef __cplusplus
 namespace ZDL {
