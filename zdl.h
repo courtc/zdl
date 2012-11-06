@@ -27,33 +27,46 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 #endif
 #endif
 
-enum zdl_keymod {
-	ZDL_KEYMOD_NONE   = 0,
-	ZDL_KEYMOD_LSHIFT = (1 <<  0),
-	ZDL_KEYMOD_RSHIFT = (1 <<  1),
-	ZDL_KEYMOD_LCTRL  = (1 <<  6),
-	ZDL_KEYMOD_RCTRL  = (1 <<  7),
-	ZDL_KEYMOD_LALT   = (1 <<  8),
-	ZDL_KEYMOD_RALT   = (1 <<  9),
-	ZDL_KEYMOD_LSUPER = (1 << 10),
-	ZDL_KEYMOD_RSUPER = (1 << 11),
-	ZDL_KEYMOD_LHYPER = (1 << 12),
-	ZDL_KEYMOD_RHYPER = (1 << 13),
-	ZDL_KEYMOD_LMETA  = (1 << 14),
-	ZDL_KEYMOD_RMETA  = (1 << 15),
-	ZDL_KEYMOD_NUM    = (1 << 16),
-	ZDL_KEYMOD_CAPS   = (1 << 17),
-	ZDL_KEYMOD_SCROLL = (1 << 18),
-	ZDL_KEYMOD_MODE   = (1 << 19),
-
-	ZDL_KEYMOD_CTRL  = (ZDL_KEYMOD_LCTRL  | ZDL_KEYMOD_RCTRL),
-	ZDL_KEYMOD_SHIFT = (ZDL_KEYMOD_LSHIFT | ZDL_KEYMOD_RSHIFT),
-	ZDL_KEYMOD_ALT   = (ZDL_KEYMOD_LALT   | ZDL_KEYMOD_RALT),
-	ZDL_KEYMOD_META  = (ZDL_KEYMOD_LMETA  | ZDL_KEYMOD_RMETA),
-	ZDL_KEYMOD_SUPER = (ZDL_KEYMOD_LSUPER | ZDL_KEYMOD_RSUPER),
-	ZDL_KEYMOD_HYPER = (ZDL_KEYMOD_LHYPER | ZDL_KEYMOD_RHYPER),
+/**< Window flags */
+enum zdl_flag_enum {
+	ZDL_FLAG_NONE       = 0,        /**< No flags */
+	ZDL_FLAG_FULLSCREEN = (1 << 0), /**< Fullscreen window */
+	ZDL_FLAG_NORESIZE   = (1 << 1), /**< Non-resizeable window */
 };
+/**< Window flag bitmask */
+typedef unsigned int zdl_flags_t;
 
+/** Key modifier */
+enum zdl_keymod_enum {
+	ZDL_KEYMOD_NONE   = 0,         /**< No keys pressed */
+	ZDL_KEYMOD_LSHIFT = (1 <<  0), /**< Left shift */
+	ZDL_KEYMOD_RSHIFT = (1 <<  1), /**< Right shift */
+	ZDL_KEYMOD_LCTRL  = (1 <<  6), /**< Left control */
+	ZDL_KEYMOD_RCTRL  = (1 <<  7), /**< Right control */
+	ZDL_KEYMOD_LALT   = (1 <<  8), /**< Left alt */
+	ZDL_KEYMOD_RALT   = (1 <<  9), /**< Right alt */
+	ZDL_KEYMOD_LSUPER = (1 << 10), /**< Left "super" (Usually Windows(r) key) */
+	ZDL_KEYMOD_RSUPER = (1 << 11), /**< Right "super" */
+	ZDL_KEYMOD_LHYPER = (1 << 12), /**< Left hyper */
+	ZDL_KEYMOD_RHYPER = (1 << 13), /**< Right hyper */
+	ZDL_KEYMOD_LMETA  = (1 << 14), /**< Left meta */
+	ZDL_KEYMOD_RMETA  = (1 << 15), /**< Right meta */
+	ZDL_KEYMOD_NUM    = (1 << 16), /**< Num Lock */
+	ZDL_KEYMOD_CAPS   = (1 << 17), /**< Caps Lock */
+	ZDL_KEYMOD_SCROLL = (1 << 18), /**< Scroll Lock */
+	ZDL_KEYMOD_MODE   = (1 << 19), /**< Mode switch */
+
+	ZDL_KEYMOD_CTRL  = (ZDL_KEYMOD_LCTRL  | ZDL_KEYMOD_RCTRL),  /**< Control mask */
+	ZDL_KEYMOD_SHIFT = (ZDL_KEYMOD_LSHIFT | ZDL_KEYMOD_RSHIFT), /**< Shift mask */
+	ZDL_KEYMOD_ALT   = (ZDL_KEYMOD_LALT   | ZDL_KEYMOD_RALT),   /**< Alt mask */
+	ZDL_KEYMOD_META  = (ZDL_KEYMOD_LMETA  | ZDL_KEYMOD_RMETA),  /**< Meta mask */
+	ZDL_KEYMOD_SUPER = (ZDL_KEYMOD_LSUPER | ZDL_KEYMOD_RSUPER), /**< Super mask */
+	ZDL_KEYMOD_HYPER = (ZDL_KEYMOD_LHYPER | ZDL_KEYMOD_RHYPER), /**< Hyper mask */
+};
+/**< Key modifier bitmask */
+typedef unsigned int zdl_keymod_t;
+
+/** Key symbol */
 enum zdl_keysym {
 	ZDL_KEYSYM_BACKSPACE,
 	ZDL_KEYSYM_TAB,
@@ -192,60 +205,158 @@ enum zdl_keysym {
 	ZDL_KEYSYM_UNDO,
 };
 
+/** Motion identifier */
+enum zdl_motion_id {
+	ZDL_MOTION_POINTER,           /**< Classic pointer device */
+
+	ZDL_MOTION_TOUCH_START = 1,   /**< Touch finger #0 */
+	/* ZDL_MOTION_TOUCH_FINGER<n> */
+	ZDL_MOTION_TOUCH_END   = 255, /**< Touch finger #255 */
+
+	ZDL_MOTION_HOVER_START = 256, /**< Hover finger #0 */
+	/* ZDL_MOTION_HOVER_FINGER<n> */
+	ZDL_MOTION_HOVER_END   = 511, /**< Hover finger #255 */
+};
+
+/** Motion flags */
+enum zdl_motion_flag_enum {
+	ZDL_MOTION_FLAG_NONE    = 0,        /**< Normal motion event */
+	ZDL_MOTION_FLAG_INITIAL = (1 << 0), /**< Initial motion for id (eg finger down) */
+	ZDL_MOTION_FLAG_FINAL   = (1 << 1), /**< Final motion for id (eg finger up) */
+};
+/** Motion flag bitmask */
+typedef unsigned int zdl_motion_flags_t;
+
+/** Button identifier */
+enum zdl_button {
+	ZDL_BUTTON_LEFT   = 1, /**< Left button */
+	ZDL_BUTTON_RIGHT  = 2, /**< Right button */
+	ZDL_BUTTON_MIDDLE = 3, /**< Middle */
+	ZDL_BUTTON_MWDOWN = 4, /** Mouse-wheel down */
+	ZDL_BUTTON_MWUP   = 5, /** Mouse-wheel up */
+};
+
+/** Event type */
 enum zdl_event_type {
-	ZDL_EVENT_KEYPRESS,
-	ZDL_EVENT_KEYRELEASE,
+	ZDL_EVENT_KEYPRESS,      /**< Key was pressed */
+	ZDL_EVENT_KEYRELEASE,    /**< Key was released */
 
-	ZDL_EVENT_BUTTONPRESS,
-	ZDL_EVENT_BUTTONRELEASE,
+	ZDL_EVENT_BUTTONPRESS,   /**< Button was pressed */
+	ZDL_EVENT_BUTTONRELEASE, /**< Button was released */
 
-	ZDL_EVENT_MOTION,
+	ZDL_EVENT_MOTION,        /**< Motion (touch/pointer) */
 
 	ZDL_EVENT_GAINFOCUS,
 	ZDL_EVENT_LOSEFOCUS,
 
-	ZDL_EVENT_RECONFIGURE,
-	ZDL_EVENT_EXPOSE,
-	ZDL_EVENT_ERROR,
-	ZDL_EVENT_EXIT,
+	ZDL_EVENT_RECONFIGURE,   /**< Window was reconfigured */
+	ZDL_EVENT_EXPOSE,        /**< Window should be redrawn */
+	ZDL_EVENT_HIDE,          /**< Window was hidden */
+	ZDL_EVENT_ERROR,         /**< Unrecoverable error happened */
+	ZDL_EVENT_EXIT,          /**< Window manager requested exit */
 };
 
+/** Event */
 struct zdl_event {
-	enum zdl_event_type type;
+	enum zdl_event_type type; /**< Event type */
 
 	union {
+		/** Key event */
 		struct {
-			enum zdl_keysym sym;
-			unsigned int  modifiers;
-			unsigned short unicode;
-			unsigned char scancode;
+			enum zdl_keysym sym;      /**< Key symbol */
+			zdl_keymod_t modifiers;   /**< Key modifier mask */
+			unsigned short unicode;   /**< UTF-8 keycode */
+			unsigned char scancode;   /**< Device specific scancode */
 		} key;
+
+		/** Button event */
 		struct {
-			int button;
-			int x, y;
+			enum zdl_button button;   /**< Button identifier */
+			int x, y;                 /**< Event position */
 		} button;
+
+		/** Motion event */
 		struct {
-			int x, y;
-			int d_x, d_y;
+			enum zdl_motion_id id;    /**< Motion identifier */
+			int x, y;                 /**< Event position */
+			int d_x, d_y;             /**< Delta position */
+			zdl_motion_flags_t flags; /**< Flags */
 		} motion;
+
+		/** Reconfigure event */
 		struct {
-			int width, height;
+			int width, height; /**< New dimensions */
 		} reconfigure;
 	};
 };
 
+/** Window handle */
 typedef struct zdl_window *zdl_window_t;
+/** Invalid window handle */
 #define ZDL_WINDOW_INVALID ((zdl_window_t)0)
 
-ZDL_EXPORT zdl_window_t zdl_window_create(int width, int height, int fullscreen);
+/** Create a new window.
+ * @param width Width of client area desired.
+ * @param height Height of client area desired.
+ * @param flags Flags describing window behavior.
+ * @return Newly created window handle on success, ZDL_WINDOW_INVALID on failure.
+ */
+ZDL_EXPORT zdl_window_t zdl_window_create(int width, int height, zdl_flags_t flags);
+
+/** Destroy existing window.
+ * @param w Window handle.
+ */
 ZDL_EXPORT void zdl_window_destroy(zdl_window_t w);
+
+/** Set window title.
+ * @param w Window handle.
+ * @param icon Window icon name.
+ * @param name Window name.
+ */
 ZDL_EXPORT void zdl_window_set_title(zdl_window_t w, const char *icon, const char *name);
-ZDL_EXPORT void zdl_window_set_fullscreen(zdl_window_t w, int fullscreen);
-ZDL_EXPORT int  zdl_window_get_fullscreen(const zdl_window_t w);
+
+/** Set window flags.
+ * @param w Window handle.
+ * @param flags Desired behavioral flags.
+ */
+ZDL_EXPORT void zdl_window_set_flags(zdl_window_t w, zdl_flags_t flags);
+
+/** Get window flags.
+ * @param w Window handle.
+ * @return Behavioral flags.
+ */
+ZDL_EXPORT zdl_flags_t zdl_window_get_flags(const zdl_window_t w);
+
+/** Set window size.
+ * @param w Window handle.
+ * @param width Desired window width.
+ * @param height Desired window height.
+ */
 ZDL_EXPORT void zdl_window_set_size(zdl_window_t w, int width, int height);
+
+/** Get window size.
+ * @param w Window handle.
+ * @param width Pointer to where window width should be stored.
+ * @param height Pointer to where window height should be stored.
+ */
 ZDL_EXPORT void zdl_window_get_size(const zdl_window_t w, int *width, int *height);
+
+/** Set window cursor visibility.
+ * @param w Window handle.
+ * @param shown Whether to show the cursor in the window.
+ */
 ZDL_EXPORT void zdl_window_show_cursor(zdl_window_t w, int shown);
+
+/** Poll for window events.
+ * @param w Window handle.
+ * @param ev Pointer to event structure to fill-out
+ * @return 0 on event, !0 if no event.
+ */
 ZDL_EXPORT int  zdl_window_poll_event(zdl_window_t w, struct zdl_event *ev);
+
+/** Swap window buffers.
+ * @param w Window handle.
+ */
 ZDL_EXPORT void zdl_window_swap(zdl_window_t w);
 
 #ifdef __cplusplus
@@ -253,9 +364,9 @@ namespace ZDL {
 
 class Window {
 public:
-	Window(int width, int height, bool fullscreen)
+	Window(int width, int height, int flags)
 	{
-		m_win = zdl_window_create(width, height, fullscreen);
+		m_win = zdl_window_create(width, height, flags);
 		if (m_win == NULL) throw 0;
 	}
 	~Window()
@@ -264,10 +375,10 @@ public:
 	void setTitle(const char *icon, const char *name = NULL)
 	{ zdl_window_set_title(m_win, icon, name); }
 
-	void setFullscreen(bool fullscreen)
-	{ zdl_window_set_fullscreen(m_win, fullscreen); }
-	bool getFullscreen(void) const
-	{ return !!zdl_window_get_fullscreen(m_win); }
+	void setFlags(zdl_flags_t flags)
+	{ zdl_window_set_flags(m_win, flags); }
+	zdl_flags_t getFlags(void) const
+	{ return zdl_window_get_flags(m_win); }
 
 	void setSize(int w, int h)
 	{ zdl_window_set_size(m_win, w, h); }

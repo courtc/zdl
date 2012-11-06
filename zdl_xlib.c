@@ -43,7 +43,7 @@ static Bool wait_for_map_notify(Display *d, XEvent *e, char *arg)
 	return GL_FALSE;
 }
 
-int zdl_window_reconfigure(zdl_window_t w, int width, int height, int fullscreen)
+int zdl_window_reconfigure(zdl_window_t w, int width, int height, zdl_flags_t flags)
 {
 	unsigned int valuelist[6];
 	unsigned int valuemask;
@@ -82,7 +82,7 @@ int zdl_window_reconfigure(zdl_window_t w, int width, int height, int fullscreen
 	swa.colormap = w->colormap;
 	swa.border_pixel = 0;
 	swa.background_pixel = 0;
-	swa.override_redirect = fullscreen;
+	swa.override_redirect = !!(flags & ZDL_FLAG_FULLSCREEN);
 	swa.event_mask =	KeyPressMask        | KeyReleaseMask    |
 				ButtonPressMask     | ButtonReleaseMask |
 				EnterWindowMask     | LeaveWindowMask   |
@@ -110,7 +110,7 @@ int zdl_window_reconfigure(zdl_window_t w, int width, int height, int fullscreen
 	XSetWMProtocols(w->display, w->window, &w->wm_delete_window, 1);
 	XIfEvent(w->display, &event, wait_for_map_notify, (char *)w->window);
 
-	if (fullscreen) {
+	if (flags & ZDL_FLAG_FULLSCREEN) {
 		XGrabKeyboard(w->display, root, 1, GrabModeAsync, GrabModeAsync, CurrentTime);
 		w->grabbed = 1;
 	} else if (w->grabbed) {
@@ -126,7 +126,7 @@ int zdl_window_reconfigure(zdl_window_t w, int width, int height, int fullscreen
 	return 0;
 }
 
-zdl_window_t zdl_window_create(int width, int height, int fullscreen)
+zdl_window_t zdl_window_create(int width, int height, zdl_flags_t flags)
 {
 	zdl_window_t w;
 
@@ -145,11 +145,11 @@ zdl_window_t zdl_window_create(int width, int height, int fullscreen)
 
 	w->width = width;
 	w->height = height;
-	w->fullscreen = fullscreen;
+	w->fullscreen = (flags & ZDL_FLAG_FULLSCREEN);
 
 	w->wm_delete_window = XInternAtom(w->display, "WM_DELETE_WINDOW", False);
 
-	if (fullscreen) {
+	if (flags & ZDL_FLAG_FULLSCREEN) {
 		width = XDisplayWidth(w->display, w->default_screen);
 		height = XDisplayHeight(w->display, w->default_screen);
 
@@ -159,7 +159,7 @@ zdl_window_t zdl_window_create(int width, int height, int fullscreen)
 		w->height = height;
 	}
 
-	if (zdl_window_reconfigure(w, width, height, fullscreen)) {
+	if (zdl_window_reconfigure(w, width, height, flags)) {
 		XCloseDisplay(w->display);
 		free(w);
 		return ZDL_WINDOW_INVALID;
@@ -183,8 +183,9 @@ void zdl_window_destroy(zdl_window_t w)
 	free(w);
 }
 
-void zdl_window_set_fullscreen(zdl_window_t w, int fullscreen)
+void zdl_window_set_flags(zdl_window_t w, zdl_flags_t flags)
 {
+	int fullscreen = (flags & ZDL_FLAG_FULLSCREEN);
 	unsigned int width, height;
 	if (fullscreen == w->fullscreen)
 		return;
@@ -202,7 +203,7 @@ void zdl_window_set_fullscreen(zdl_window_t w, int fullscreen)
 	} else {
 		width = w->masked.width;
 		height = w->masked.height;
-		if (zdl_window_reconfigure(w, width, height, fullscreen))
+		if (zdl_window_reconfigure(w, width, height, flags))
 			return;
 		w->width = width;
 		w->height = height;
@@ -210,9 +211,9 @@ void zdl_window_set_fullscreen(zdl_window_t w, int fullscreen)
 	w->fullscreen = fullscreen;
 }
 
-int  zdl_window_get_fullscreen(zdl_window_t w)
+zdl_flags_t zdl_window_get_flags(zdl_window_t w)
 {
-	return w->fullscreen;
+	return w->fullscreen ? ZDL_FLAG_FULLSCREEN ? : 0;
 }
 
 void zdl_window_set_size(zdl_window_t w, int width, int height)

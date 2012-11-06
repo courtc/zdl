@@ -13,7 +13,7 @@
 
 int main(int argc, char **argv)
 {
-	ZDL::Window *window = new ZDL::Window(320, 240, false);
+	ZDL::Window *window = new ZDL::Window(320, 240, ZDL_FLAG_NONE);
 	bool fullscreen = false;
 	int done = 0;
 	int w, h;
@@ -34,7 +34,8 @@ int main(int argc, char **argv)
 					done = 1;
 				if (event.key.sym == ZDL_KEYSYM_F) {
 					fullscreen = !fullscreen;
-					window->setFullscreen(fullscreen);
+					window->setFlags((window->getFlags() & ~ZDL_FLAG_FULLSCREEN) |
+							(fullscreen ? ZDL_FLAG_FULLSCREEN : 0));
 					window->showCursor(!fullscreen);
 					window->getSize(&w, &h);
 					glViewport(0, 0, w, h);
@@ -49,7 +50,8 @@ int main(int argc, char **argv)
 				done = 1;
 				break;
 			case ZDL_EVENT_RECONFIGURE:
-				window->getSize(&w, &h);
+				w = event.reconfigure.width;
+				h = event.reconfigure.height;
 				fprintf(stderr, "resize (%d,%d)\n", w, h);
 				glViewport(0, 0, w, h);
 				break;
