@@ -40,9 +40,10 @@
 struct zdl_window {
 	char *title;
 	Display *display;
-	int default_screen;
+	int screen;
 	int width, height;
 	int fullscreen;
+	int noresize;
 	struct { int width, height; } masked;
 	int configured;
 	int grabbed;
@@ -64,7 +65,32 @@ static Bool wait_for_map_notify(Display *d, XEvent *e, char *arg)
 	return GL_FALSE;
 }
 
-int zdl_window_reconfigure(zdl_window_t w, int width, int height, zdl_flags_t flags)
+static void zdl_window_set_hints(zdl_window_t w, int width, int height)
+{
+	XSizeHints *hints = XAllocSizeHints();
+
+	hints->flags = PMinSize | PMaxSize;
+
+	if (w->noresize) {
+		hints->min_width = width;
+		hints->min_height = height;
+		hints->max_width = width;
+		hints->max_height = height;
+	} else {
+		hints->min_width = 0;
+		hints->min_height = 0;
+		hints->max_width = XDisplayWidth(w->display, w->screen);
+		hints->max_height = XDisplayHeight(w->display, w->screen);
+	}
+
+	hints->base_width = width;
+	hints->base_height = height;
+
+	XSetWMNormalHints(w->display, w->window, hints);
+	XFree(hints);
+}
+
+static int zdl_window_reconfigure(zdl_window_t w, int width, int height, zdl_flags_t flags)
 {
 	unsigned int valuelist[6];
 	unsigned int valuemask;
@@ -85,7 +111,7 @@ int zdl_window_reconfigure(zdl_window_t w, int width, int height, zdl_flags_t fl
 	valuelist[2] = GLX_USE_GL;
 	valuelist[3] = None;
 
-	vi = glXChooseVisual(w->display, w->default_screen, (int *)valuelist);
+	vi = glXChooseVisual(w->display, w->screen, (int *)valuelist);
 	if (vi == NULL) {
 		fprintf(stderr, "Unable to choose appropriate X visual\n");
 		return -1;
@@ -118,6 +144,8 @@ int zdl_window_reconfigure(zdl_window_t w, int width, int height, zdl_flags_t fl
 	w->window = XCreateWindow(w->display, root,
 			0, 0, width, height, 0, vi->depth,
 			InputOutput, vi->visual, valuemask, &swa);
+
+	zdl_window_set_hints(w, width, height);
 
 	if (!glXMakeCurrent(w->display, w->window, w->context)) {
 		fprintf(stderr, "Unable to make context current\n");
@@ -162,17 +190,18 @@ zdl_window_t zdl_window_create(int width, int height, zdl_flags_t flags)
 		return ZDL_WINDOW_INVALID;
 	}
 
-	w->default_screen = XDefaultScreen(w->display);
+	w->screen = XDefaultScreen(w->display);
 
 	w->width = width;
 	w->height = height;
 	w->fullscreen = (flags & ZDL_FLAG_FULLSCREEN);
+	w->noresize = (flags & ZDL_FLAG_NORESIZE);
 
 	w->wm_delete_window = XInternAtom(w->display, "WM_DELETE_WINDOW", False);
 
 	if (flags & ZDL_FLAG_FULLSCREEN) {
-		width = XDisplayWidth(w->display, w->default_screen);
-		height = XDisplayHeight(w->display, w->default_screen);
+		width = XDisplayWidth(w->display, w->screen);
+		height = XDisplayHeight(w->display, w->screen);
 
 		w->masked.width = w->width;
 		w->masked.height = w->height;
@@ -207,34 +236,41 @@ void zdl_window_destroy(zdl_window_t w)
 void zdl_window_set_flags(zdl_window_t w, zdl_flags_t flags)
 {
 	int fullscreen = (flags & ZDL_FLAG_FULLSCREEN);
+	int noresize = (flags & ZDL_FLAG_NORESIZE);
 	unsigned int width, height;
-	if (fullscreen == w->fullscreen)
-		return;
 
-	if (fullscreen) {
-
-		width = XDisplayWidth(w->display, w->default_screen);
-		height = XDisplayHeight(w->display, w->default_screen);
-		if (zdl_window_reconfigure(w, width, height, fullscreen))
-			return;
-		w->masked.width = w->width;
-		w->masked.height = w->height;
-		w->width = width;
-		w->height = height;
-	} else {
-		width = w->masked.width;
-		height = w->masked.height;
-		if (zdl_window_reconfigure(w, width, height, flags))
-			return;
-		w->width = width;
-		w->height = height;
+	if (fullscreen != w->fullscreen) {
+		w->noresize = noresize;
+		if (fullscreen) {
+			w->masked.width = w->width;
+			w->masked.height = w->height;
+			width = XDisplayWidth(w->display, w->screen);
+			height = XDisplayHeight(w->display, w->screen);
+			if (zdl_window_reconfigure(w, width, height, flags))
+				return;
+			w->width = width;
+			w->height = height;
+		} else {
+			width = w->masked.width;
+			height = w->masked.height;
+			if (zdl_window_reconfigure(w, width, height, flags))
+				return;
+			w->width = width;
+			w->height = height;
+		}
+		w->fullscreen = fullscreen;
 	}
-	w->fullscreen = fullscreen;
+
+	if (noresize != w->noresize) {
+		w->noresize = noresize;
+		zdl_window_set_hints(w, w->width, w->height);
+	}
 }
 
 zdl_flags_t zdl_window_get_flags(zdl_window_t w)
 {
-	return w->fullscreen ? ZDL_FLAG_FULLSCREEN : 0;
+	return (w->fullscreen ? ZDL_FLAG_FULLSCREEN : 0) |
+		(w->noresize  ? ZDL_FLAG_NORESIZE : 0);
 }
 
 void zdl_window_set_size(zdl_window_t w, int width, int height)
@@ -281,7 +317,7 @@ static const struct {
 	{ (KeySym)-1, Mod4Mask },
 };
 
-int zdl_window_translate(zdl_window_t w, int down, XKeyEvent *event, struct zdl_event *ev)
+static int zdl_window_translate(zdl_window_t w, int down, XKeyEvent *event, struct zdl_event *ev)
 {
 	unsigned int nmod = ZDL_KEYMOD_NONE;
 	int drop = 0, i;
@@ -471,7 +507,7 @@ int zdl_window_translate(zdl_window_t w, int down, XKeyEvent *event, struct zdl_
 	if (drop) {
 		Window root;
 		XEvent xevent;
-		root = XRootWindow(w->display, w->default_screen);
+		root = XRootWindow(w->display, w->screen);
 		xevent.xkey = *event;
 		XSendEvent(w->display, root, False,
 				KeyPressMask | KeyReleaseMask,
