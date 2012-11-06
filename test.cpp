@@ -41,8 +41,8 @@
 
 int main(int argc, char **argv)
 {
-	ZDL::Window *window = new ZDL::Window(320, 240, ZDL_FLAG_NONE);
-	bool fullscreen = false;
+	zdl_flags_t flags = ZDL_FLAG_NONE;
+	ZDL::Window *window = new ZDL::Window(320, 240, flags);
 	int done = 0;
 	int w, h;
 
@@ -58,13 +58,16 @@ int main(int argc, char **argv)
 			case ZDL_EVENT_KEYPRESS:
 				if (event.key.unicode != 0)
 					fprintf(stderr, "%c", event.key.unicode & 0x7f);
+				if (event.key.sym == ZDL_KEYSYM_R) {
+					flags ^= ZDL_FLAG_NORESIZE;
+					window->setFlags(flags);
+				}
 				if (event.key.sym == ZDL_KEYSYM_Q)
 					done = 1;
 				if (event.key.sym == ZDL_KEYSYM_F) {
-					fullscreen = !fullscreen;
-					window->setFlags((window->getFlags() & ~ZDL_FLAG_FULLSCREEN) |
-							(fullscreen ? ZDL_FLAG_FULLSCREEN : 0));
-					window->showCursor(!fullscreen);
+					flags ^= ZDL_FLAG_FULLSCREEN;
+					window->setFlags(flags);
+					window->showCursor(!(flags & ZDL_FLAG_FULLSCREEN));
 					window->getSize(&w, &h);
 					glViewport(0, 0, w, h);
 				}
