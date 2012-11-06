@@ -29,13 +29,6 @@ struct zdl_window {
 	Atom wm_delete_window;
 };
 
-static int error_handler(Display *displ)
-{
-	fprintf(stderr, "fatal xlib error; aborting\n");
-	abort();
-	return 0;
-}
-
 static Bool wait_for_map_notify(Display *d, XEvent *e, char *arg)
 {
 	if ((e->type == MapNotify) && (e->xmap.window == (Window)arg))
@@ -213,7 +206,7 @@ void zdl_window_set_flags(zdl_window_t w, zdl_flags_t flags)
 
 zdl_flags_t zdl_window_get_flags(zdl_window_t w)
 {
-	return w->fullscreen ? ZDL_FLAG_FULLSCREEN ? : 0;
+	return w->fullscreen ? ZDL_FLAG_FULLSCREEN : 0;
 }
 
 void zdl_window_set_size(zdl_window_t w, int width, int height)
