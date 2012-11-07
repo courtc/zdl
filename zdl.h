@@ -373,6 +373,12 @@ ZDL_EXPORT void zdl_window_show_cursor(zdl_window_t w, int shown);
  */
 ZDL_EXPORT int  zdl_window_poll_event(zdl_window_t w, struct zdl_event *ev);
 
+/** Wait for window events.
+ * @param w Window handle.
+ * @param ev Pointer to event structure to fill-out
+ */
+ZDL_EXPORT void zdl_window_wait_event(zdl_window_t w, struct zdl_event *ev);
+
 /** Swap window buffers.
  * @param w Window handle.
  */
@@ -409,6 +415,9 @@ public:
 
 	int pollEvent(struct zdl_event *ev)
 	{ return zdl_window_poll_event(m_win, ev); }
+
+	void waitEvent(struct zdl_event *ev)
+	{ zdl_window_wait_event(m_win, ev); }
 
 	void swap(void)
 	{ zdl_window_swap(m_win); }

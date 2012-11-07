@@ -679,6 +679,18 @@ int zdl_window_poll_event(zdl_window_t w, struct zdl_event *ev)
 	return zdl_queue_pop(&w->queue, ev);
 }
 
+void zdl_window_wait_event(zdl_window_t w, struct zdl_event *ev)
+{
+	while (zdl_queue_pop(&w->queue, ev) != 0) {
+		MSG msg;
+
+		if (GetMessage(&msg, w->window, 0, 0) > 0) {
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+	}
+}
+
 void zdl_window_show_cursor(zdl_window_t w, int shown)
 {
 	ShowCursor(!!shown);

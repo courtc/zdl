@@ -528,7 +528,7 @@ static int zdl_window_translate(zdl_window_t w, int down, XKeyEvent *event, stru
 	return 0;
 }
 
-int zdl_window_poll_event(zdl_window_t w, struct zdl_event *ev)
+static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 {
 	XEvent event;
 	int rc;
@@ -604,6 +604,19 @@ int zdl_window_poll_event(zdl_window_t w, struct zdl_event *ev)
 	}
 
 	return rc;
+}
+
+int zdl_window_poll_event(zdl_window_t w, struct zdl_event *ev)
+{
+	if (!XPending(w->display))
+		return -1;
+
+	return zdl_window_read_event(w, ev);
+}
+
+void zdl_window_wait_event(zdl_window_t w, struct zdl_event *ev)
+{
+	while (zdl_window_read_event(w, ev) != 0);
 }
 
 void zdl_window_show_cursor(zdl_window_t w, int shown)
