@@ -533,9 +533,6 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 	XEvent event;
 	int rc;
 
-	if (!XPending(w->display))
-		return -1;
-
 	XNextEvent(w->display, &event);
 
 	rc = 0;
