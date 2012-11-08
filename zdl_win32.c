@@ -120,12 +120,10 @@ void zdl_queue_destroy(struct zdl_queue *q)
 }
 
 struct zdl_window {
-	char *title;
 	int width;
 	int height;
 	int x, y;
-	int fullscreen;
-	int noresize;
+	zdl_flags_t flags;
 	struct {
 		int x, y;
 		int width, height;
@@ -478,24 +476,21 @@ static LRESULT CALLBACK zdl_WndProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
 	return 0;
 }
 
-static DWORD zdl_adjust_style(zdl_window_t w, int resizeable, int fullscreen)
-{
-	if (fullscreen)
-			return WS_DISABLED;
-	else if (resizeable)
-		return WS_OVERLAPPEDWINDOW;
-	else
-		return WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
-}
-
-static void zdl_adjust_size(zdl_window_t w, int *width, int *height, DWORD style, int fullscreen)
+static void zdl_adjust_size(zdl_window_t w, int *width, int *height, DWORD *style, zdl_flags_t flags)
 {
 	RECT rect;
+
+	if (flags & (ZDL_FLAG_FULLSCREEN | ZDL_FLAG_NODECOR))
+		*style = WS_DISABLED;
+	else if (!(flags & ZDL_FLAG_NORESIZE))
+		*style = WS_OVERLAPPEDWINDOW;
+	else
+		*style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
 
 	rect.left = 0;
 	rect.top = 0;
 
-	if (fullscreen) {
+	if (flags & ZDL_FLAG_FULLSCREEN) {
 		MONITORINFO minfo;
 		HMONITOR mh;
 
@@ -512,7 +507,7 @@ static void zdl_adjust_size(zdl_window_t w, int *width, int *height, DWORD style
 		rect.bottom = *height;
 	}
 
-	AdjustWindowRect(&rect, style, FALSE);
+	AdjustWindowRect(&rect, *style, FALSE);
 	*width = rect.right - rect.left;
 	*height = rect.bottom - rect.top;
 }
@@ -550,11 +545,9 @@ zdl_window_t zdl_window_create(int width, int height, zdl_flags_t flags)
 
 	w->width = width;
 	w->height = height;
-	w->fullscreen = (flags & ZDL_FLAG_FULLSCREEN);
-	w->noresize   = (flags & ZDL_FLAG_NORESIZE);
+	w->flags = flags & ~(ZDL_FLAG_NOCURSOR);
 
-	w->style = zdl_adjust_style(w, !w->noresize, w->fullscreen);
-	zdl_adjust_size(w, &width, &height, w->style, w->fullscreen);
+	zdl_adjust_size(w, &width, &height, &w->style, w->flags);
 	w->window = CreateWindowEx(0,
 			_T("win32app"),
 			_T("win32app"),
@@ -579,6 +572,8 @@ zdl_window_t zdl_window_create(int width, int height, zdl_flags_t flags)
 		}
 	}
 
+	zdl_window_set_flags(w, flags);
+
 	ShowWindow(w->window, SW_SHOWNORMAL);
 
 	return w;
@@ -594,67 +589,65 @@ void zdl_window_destroy(zdl_window_t w)
 
 void zdl_window_set_flags(zdl_window_t w, zdl_flags_t flags)
 {
-	int fullscreen = (flags & ZDL_FLAG_FULLSCREEN);
-	int noresize   = (flags & ZDL_FLAG_NORESIZE);
+	zdl_flags_t chg = flags ^ w->flags;
 	int width, height;
 
-	if (fullscreen == w->fullscreen && noresize == w->noresize)
+	if (chg == ZDL_FLAG_NONE)
 		return;
 
-	if (fullscreen) {
-		if (fullscreen != w->fullscreen) {
+	width = w->width;
+	height = w->height;
+
+	if (chg == ZDL_FLAG_NOCURSOR) {
+		ShowCursor(!(flags & ZDL_FLAG_NOCURSOR));
+		w->flags = flags;
+		return;
+	}
+
+	if (chg & ZDL_FLAG_FULLSCREEN) {
+		if (flags & ZDL_FLAG_FULLSCREEN) {
 			w->masked.width = w->width;
 			w->masked.height = w->height;
 			w->masked.x = w->x;
 			w->masked.y = w->y;
-		}
-		height = w->width;
-		width = w->height;
-		w->style = zdl_adjust_style(w, !noresize, fullscreen);
-		zdl_adjust_size(w, &width, &height, w->style, fullscreen);
-		SetWindowLong(w->window, GWL_STYLE, w->style);
-		SetWindowPos(w->window,0,0,0,width,height,SWP_NOZORDER|SWP_NOACTIVATE);
-	} else {
-		if (fullscreen != w->fullscreen) {
+			w->x = 0;
+			w->y = 0;
+		} else {
 			width = w->masked.width;
 			height = w->masked.height;
 			w->x = w->masked.x;
 			w->y = w->masked.y;
-		} else {
-			height = w->width;
-			width = w->height;
 		}
-		w->style = zdl_adjust_style(w, !noresize, fullscreen);
-		zdl_adjust_size(w, &width, &height, w->style, fullscreen);
-		SetWindowLong(w->window, GWL_STYLE, w->style);
-		SetWindowPos(w->window,0,w->x,w->y,width,height,SWP_NOZORDER|SWP_NOACTIVATE);
 	}
-	w->fullscreen = fullscreen;
-	w->noresize = noresize;
+
+	zdl_adjust_size(w, &width, &height, &w->style, flags);
+	SetWindowLong(w->window, GWL_STYLE, w->style);
+	SetWindowPos(w->window,0,w->x,w->y,width,height,SWP_NOZORDER|SWP_NOACTIVATE);
+
+	if (chg & ZDL_FLAG_NOCURSOR)
+		ShowCursor(!(flags & ZDL_FLAG_NOCURSOR));
+
+	w->flags = flags;
 
 	ShowWindow(w->window, SW_SHOW);
 }
 
 zdl_flags_t zdl_window_get_flags(const zdl_window_t w)
 {
-	return (zdl_flags_t)(
-			(w->fullscreen ? ZDL_FLAG_FULLSCREEN : 0) |
-			(w->noresize   ? ZDL_FLAG_NORESIZE   : 0)
-	);
+	return w->flags;
 }
 
 void zdl_window_set_size(zdl_window_t w, int width, int height)
 {
-	if (width == w->width && height == w->height)
-		return;
-
-	if (!w->fullscreen) {
+	if (w->flags & ZDL_FLAG_FULLSCREEN) {
+		w->masked.width = width;
+		w->masked.height = height;
+	} else {
+		if (width == w->width && height == w->height)
+			return;
 		w->width = width;
 		w->height = height;
 		SetWindowPos(w->window,0,0,0,w->width,w->height,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
-	} else {
-		w->masked.width = width;
-		w->masked.height = height;
 	}
 }
 
@@ -662,6 +655,26 @@ void zdl_window_get_size(const zdl_window_t w, int *width, int *height)
 {
 	if (width != NULL)  *width  = w->width;
 	if (height != NULL) *height = w->height;
+}
+
+void zdl_window_set_position(zdl_window_t w, int x, int y)
+{
+	if (w->flags & ZDL_FLAG_FULLSCREEN) {
+		w->masked.x = x;
+		w->masked.y = y;
+	} else {
+		if (x == w->x && y == w->y)
+			return;
+		w->x = x;
+		w->y = y;
+		SetWindowPos(w->window,0,x,y,w->width,w->height,SWP_NOZORDER|SWP_NOACTIVATE);
+	}
+}
+
+void zdl_window_get_position(const zdl_window_t w, int *x, int *y)
+{
+	if (x != NULL) *x = w->x;
+	if (y != NULL) *y = w->y;
 }
 
 int zdl_window_poll_event(zdl_window_t w, struct zdl_event *ev)
@@ -691,11 +704,6 @@ void zdl_window_wait_event(zdl_window_t w, struct zdl_event *ev)
 	}
 }
 
-void zdl_window_show_cursor(zdl_window_t w, int shown)
-{
-	ShowCursor(!!shown);
-}
-
 void zdl_window_swap(zdl_window_t w)
 {
 	SwapBuffers(w->hDeviceContext);
@@ -710,10 +718,6 @@ void zdl_window_set_title(zdl_window_t w, const char *icon, const char *name)
 		name = icon;
 	else if (icon == NULL)
 		icon = name;
-
-	if (w->title != NULL)
-		free(w->title);
-	w->title = _strdup(name);
 
 	SetWindowText(w->window, name);
 }

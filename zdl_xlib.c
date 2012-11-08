@@ -31,6 +31,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <X11/Xlib.h>
+#include <X11/Xatom.h>
 #include <X11/cursorfont.h>
 #include <GL/glx.h>
 #include <GL/gl.h>
@@ -38,17 +39,21 @@
 #include "zdl.h"
 
 struct zdl_window {
-	char *title;
 	Display *display;
+	int mapped;
 	int screen;
+	int x, y;
 	int width, height;
-	int fullscreen;
-	int noresize;
-	struct { int width, height; } masked;
-	int configured;
-	int grabbed;
-	int hidecursor;
+	struct {
+		int x, y;
+	} lastconfig;
+	struct {
+		int x, y;
+		int width, height;
+	} masked;
+	zdl_flags_t flags;
 
+	Window root;
 	Window window;
 	Colormap colormap;
 	GLXContext context;
@@ -58,6 +63,10 @@ struct zdl_window {
 	Atom wm_delete_window;
 };
 
+#define MWM_HINTS_DECORATIONS   (1L << 1)
+#define MWM_DECOR_ALL           (1L << 0)
+#define MWM_DECOR_RESIZEH       (1L << 2)
+
 static Bool wait_for_map_notify(Display *d, XEvent *e, char *arg)
 {
 	if ((e->type == MapNotify) && (e->xmap.window == (Window)arg))
@@ -65,28 +74,91 @@ static Bool wait_for_map_notify(Display *d, XEvent *e, char *arg)
 	return GL_FALSE;
 }
 
-static void zdl_window_set_hints(zdl_window_t w, int width, int height)
+static void zdl_window_set_wm_state(zdl_window_t w, zdl_flags_t flags)
+{
+	Atom property;
+	Atom value;
+
+	property = XInternAtom(w->display, "_NET_WM_STATE", False);
+	value = XInternAtom(w->display, "_NET_WM_STATE_FULLSCREEN", False);
+	if (w->mapped) {
+		XEvent xev;
+
+		xev.xclient.type = ClientMessage;
+		xev.xclient.serial = 0;
+		xev.xclient.send_event = True;
+		xev.xclient.message_type = property;
+		xev.xclient.window = w->window;
+		xev.xclient.format = 32;
+		xev.xclient.data.l[0] = !!(flags & ZDL_FLAG_FULLSCREEN);
+		xev.xclient.data.l[1] = value;
+		xev.xclient.data.l[2] = 0;
+
+		XSendEvent(w->display, w->root, False,
+				SubstructureRedirectMask | SubstructureNotifyMask,
+				&xev);
+	} else if (flags & ZDL_FLAG_FULLSCREEN) {
+		XChangeProperty(w->display, w->window, property,
+			XA_ATOM,
+			32, PropModeReplace,
+			(unsigned char *)&value, 1);
+	}
+}
+
+static void zdl_window_set_hints(zdl_window_t w, int width, int height, zdl_flags_t flags)
 {
 	XSizeHints *hints = XAllocSizeHints();
+	struct {
+		unsigned long flags;
+		unsigned long functions;
+		unsigned long decorations;
+		long          inputMode;
+		unsigned long status;
+	} mwm_hints;
+	Atom property;
 
 	hints->flags = PMinSize | PMaxSize;
 
-	if (w->noresize) {
+	if (flags & ZDL_FLAG_NORESIZE) {
 		hints->min_width = width;
 		hints->min_height = height;
 		hints->max_width = width;
 		hints->max_height = height;
+		mwm_hints.decorations = ~MWM_DECOR_RESIZEH;
 	} else {
 		hints->min_width = 0;
 		hints->min_height = 0;
 		hints->max_width = XDisplayWidth(w->display, w->screen);
 		hints->max_height = XDisplayHeight(w->display, w->screen);
+		mwm_hints.decorations = MWM_DECOR_ALL;
 	}
 
 	hints->base_width = width;
 	hints->base_height = height;
 
-	XSetWMNormalHints(w->display, w->window, hints);
+	if (flags & (ZDL_FLAG_FULLSCREEN | ZDL_FLAG_NODECOR)) {
+		mwm_hints.flags = (1 << 1);
+		mwm_hints.decorations = 0;
+	} else {
+		mwm_hints.flags = (1 << 1);
+	}
+
+	property = XInternAtom(w->display, "_MOTIF_WM_HINTS", False);
+
+	if (flags & ZDL_FLAG_FULLSCREEN) {
+		XChangeProperty(w->display, w->window, property, property,
+				32, PropModeReplace, (unsigned char *)&mwm_hints,
+				sizeof(mwm_hints) / sizeof(long));
+		zdl_window_set_wm_state(w, flags);
+		XSetWMNormalHints(w->display, w->window, hints);
+	} else {
+		XSetWMNormalHints(w->display, w->window, hints);
+		zdl_window_set_wm_state(w, flags);
+		XChangeProperty(w->display, w->window, property, property,
+				32, PropModeReplace, (unsigned char *)&mwm_hints,
+				sizeof(mwm_hints) / sizeof(long));
+	}
+
 	XFree(hints);
 }
 
@@ -97,14 +169,6 @@ static int zdl_window_reconfigure(zdl_window_t w, int width, int height, zdl_fla
 	XSetWindowAttributes swa;
 	XVisualInfo *vi;
 	XEvent event;
-	Window root;
-
-	if (w->configured) {
-		XFreeColormap(w->display, w->colormap);
-		XDestroyWindow(w->display, w->window);
-		glXDestroyContext(w->display, w->context);
-		w->configured = 0;
-	}
 
 	valuelist[0] = GLX_RGBA;
 	valuelist[1] = GLX_DOUBLEBUFFER;
@@ -123,13 +187,14 @@ static int zdl_window_reconfigure(zdl_window_t w, int width, int height, zdl_fla
 		return -1;
 	}
 
-	root = XRootWindow(w->display, vi->screen);
-	w->colormap = XCreateColormap(w->display, root, vi->visual, AllocNone);
+	w->root = XRootWindow(w->display, vi->screen);
+	w->colormap = XCreateColormap(w->display, w->root, vi->visual, AllocNone);
 
 	swa.colormap = w->colormap;
 	swa.border_pixel = 0;
 	swa.background_pixel = 0;
-	swa.override_redirect = !!(flags & ZDL_FLAG_FULLSCREEN);
+	swa.override_redirect = 0;
+	//swa.override_redirect = !!(flags & ZDL_FLAG_FULLSCREEN);
 	swa.event_mask =	KeyPressMask        | KeyReleaseMask    |
 				ButtonPressMask     | ButtonReleaseMask |
 				EnterWindowMask     | LeaveWindowMask   |
@@ -141,11 +206,14 @@ static int zdl_window_reconfigure(zdl_window_t w, int width, int height, zdl_fla
 			CWEventMask |
 			CWColormap;
 
-	w->window = XCreateWindow(w->display, root,
+	w->window = XCreateWindow(w->display, w->root,
 			0, 0, width, height, 0, vi->depth,
 			InputOutput, vi->visual, valuemask, &swa);
 
-	zdl_window_set_hints(w, width, height);
+	zdl_window_set_hints(w, width, height, flags);
+	if (flags & ZDL_FLAG_FULLSCREEN)
+		XMoveWindow(w->display, w->window, 0, 0);
+
 
 	if (!glXMakeCurrent(w->display, w->window, w->context)) {
 		fprintf(stderr, "Unable to make context current\n");
@@ -155,22 +223,11 @@ static int zdl_window_reconfigure(zdl_window_t w, int width, int height, zdl_fla
 		return -1;
 	}
 
-	XMapWindow(w->display, w->window); 
+	XMapWindow(w->display, w->window);
 	XSetWMProtocols(w->display, w->window, &w->wm_delete_window, 1);
 	XIfEvent(w->display, &event, wait_for_map_notify, (char *)w->window);
 
-	if (flags & ZDL_FLAG_FULLSCREEN) {
-		XGrabKeyboard(w->display, root, 1, GrabModeAsync, GrabModeAsync, CurrentTime);
-		w->grabbed = 1;
-	} else if (w->grabbed) {
-		XUngrabKeyboard(w->display, CurrentTime);
-		w->grabbed = 0;
-	}
-
-	if (w->title != NULL)
-		XStoreName(w->display, w->window, w->title);
-
-	w->configured = 1;
+	w->mapped = 1;
 
 	return 0;
 }
@@ -192,10 +249,10 @@ zdl_window_t zdl_window_create(int width, int height, zdl_flags_t flags)
 
 	w->screen = XDefaultScreen(w->display);
 
+	w->x = w->y = 0;
 	w->width = width;
 	w->height = height;
-	w->fullscreen = (flags & ZDL_FLAG_FULLSCREEN);
-	w->noresize = (flags & ZDL_FLAG_NORESIZE);
+	w->flags = flags & ~ZDL_FLAG_NOCURSOR;
 
 	w->wm_delete_window = XInternAtom(w->display, "WM_DELETE_WINDOW", False);
 
@@ -215,62 +272,84 @@ zdl_window_t zdl_window_create(int width, int height, zdl_flags_t flags)
 		return ZDL_WINDOW_INVALID;
 	}
 
+	zdl_window_set_flags(w, flags);
+
 	return w;
 }
 
 void zdl_window_destroy(zdl_window_t w)
 {
-	if (w->configured) {
-		if (w->grabbed)
-			XUngrabKeyboard(w->display, CurrentTime);
-		XFreeColormap(w->display, w->colormap);
-		XDestroyWindow(w->display, w->window);
-		glXDestroyContext(w->display, w->context);
-	}
+	XFreeColormap(w->display, w->colormap);
+	XDestroyWindow(w->display, w->window);
+	glXDestroyContext(w->display, w->context);
 	XCloseDisplay(w->display);
-	if (w->title != NULL)
-		free(w->title);
 	free(w);
 }
 
 void zdl_window_set_flags(zdl_window_t w, zdl_flags_t flags)
 {
-	int fullscreen = (flags & ZDL_FLAG_FULLSCREEN);
-	int noresize = (flags & ZDL_FLAG_NORESIZE);
-	unsigned int width, height;
+	zdl_flags_t chg = flags ^ w->flags;
 
-	if (fullscreen != w->fullscreen) {
-		w->noresize = noresize;
-		if (fullscreen) {
+	if (chg & ZDL_FLAG_FULLSCREEN) {
+		int x, y, width, height;
+		chg &= ~(ZDL_FLAG_NORESIZE | ZDL_FLAG_NODECOR);
+
+		if (flags & ZDL_FLAG_FULLSCREEN) {
+			w->masked.x = w->x;
+			w->masked.y = w->y;
 			w->masked.width = w->width;
 			w->masked.height = w->height;
 			width = XDisplayWidth(w->display, w->screen);
 			height = XDisplayHeight(w->display, w->screen);
-			if (zdl_window_reconfigure(w, width, height, flags))
-				return;
-			w->width = width;
-			w->height = height;
+			x = 0;
+			y = 0;
 		} else {
+			x = w->masked.x;
+			y = w->masked.y;
 			width = w->masked.width;
 			height = w->masked.height;
-			if (zdl_window_reconfigure(w, width, height, flags))
-				return;
-			w->width = width;
-			w->height = height;
 		}
-		w->fullscreen = fullscreen;
+
+		zdl_window_set_hints(w, width, height, flags);
+		XMoveResizeWindow(w->display, w->window, x, y, width, height);
+		w->width = width;
+		w->height = height;
 	}
 
-	if (noresize != w->noresize) {
-		w->noresize = noresize;
-		zdl_window_set_hints(w, w->width, w->height);
+	if (chg & (ZDL_FLAG_NORESIZE | ZDL_FLAG_NODECOR)) {
+		zdl_window_set_hints(w, w->width, w->height, flags);
+		XMoveWindow(w->display, w->window, w->x, w->y);
 	}
+
+	if (chg & ZDL_FLAG_NOCURSOR) {
+		Cursor cursor;
+
+		if (flags & ZDL_FLAG_NOCURSOR) {
+			static char bm_no_data[] = {0, 0, 0, 0, 0, 0, 0, 0};
+			XColor black;
+			Pixmap bm_no;
+			black.red = black.green = black.blue = 0;
+
+			bm_no = XCreateBitmapFromData(w->display, w->window, bm_no_data, 8, 8);
+			cursor = XCreatePixmapCursor(w->display, bm_no, bm_no, &black, &black, 0, 0);
+
+			XDefineCursor(w->display, w->window, cursor);
+			XFreeCursor(w->display, cursor);
+			if (bm_no != None)
+				XFreePixmap(w->display, bm_no);
+		} else {
+			cursor = XCreateFontCursor(w->display, XC_left_ptr);
+			XDefineCursor(w->display, w->window, cursor);
+			XFreeCursor(w->display, cursor);
+		}
+	}
+
+	w->flags = flags;
 }
 
-zdl_flags_t zdl_window_get_flags(zdl_window_t w)
+zdl_flags_t zdl_window_get_flags(const zdl_window_t w)
 {
-	return (w->fullscreen ? ZDL_FLAG_FULLSCREEN : 0) |
-		(w->noresize  ? ZDL_FLAG_NORESIZE : 0);
+	return w->flags;
 }
 
 void zdl_window_set_size(zdl_window_t w, int width, int height)
@@ -278,7 +357,7 @@ void zdl_window_set_size(zdl_window_t w, int width, int height)
 	if (width == w->width && height == w->height)
 		return;
 
-	if (!w->fullscreen) {
+	if (!(w->flags & ZDL_FLAG_FULLSCREEN)) {
 		w->width = width;
 		w->height = height;
 		XResizeWindow(w->display, w->window, w->width, w->height);
@@ -288,39 +367,37 @@ void zdl_window_set_size(zdl_window_t w, int width, int height)
 	}
 }
 
-void zdl_window_get_size(zdl_window_t w, int *width, int *height)
+void zdl_window_get_size(const zdl_window_t w, int *width, int *height)
 {
 	if (width != NULL)  *width  = w->width;
 	if (height != NULL) *height = w->height;
 }
 
-static const struct {
-	KeySym sym;
-	unsigned int mask;
-} drop_keys[] = {
-	{ XK_Tab, Mod1Mask | Mod4Mask },
-	{ XK_F1,  Mod1Mask | Mod4Mask },
-	{ XK_F1,  Mod1Mask | Mod4Mask },
-	{ XK_F2,  Mod1Mask | Mod4Mask },
-	{ XK_F3,  Mod1Mask | Mod4Mask },
-	{ XK_F4,  Mod1Mask | Mod4Mask },
-	{ XK_F5,  Mod1Mask | Mod4Mask },
-	{ XK_F6,  Mod1Mask | Mod4Mask },
-	{ XK_F7,  Mod1Mask | Mod4Mask },
-	{ XK_F8,  Mod1Mask | Mod4Mask },
-	{ XK_F9,  Mod1Mask | Mod4Mask },
-	{ XK_F10, Mod1Mask | Mod4Mask },
-	{ XK_F11, Mod1Mask | Mod4Mask },
-	{ XK_F12, Mod1Mask | Mod4Mask },
-	{ XK_Super_R, 0 },
-	{ XK_Super_L, 0 },
-	{ (KeySym)-1, Mod4Mask },
-};
+void zdl_window_set_position(zdl_window_t w, int x, int y)
+{
+	if (x == w->x && y == w->y)
+		return;
+
+	if (!(w->flags & ZDL_FLAG_FULLSCREEN)) {
+		w->x = x;
+		w->y = y;
+		XMoveWindow(w->display, w->x, w->y, w->height);
+	} else {
+		w->masked.x = x;
+		w->masked.y = y;
+	}
+}
+
+void zdl_window_get_position(const zdl_window_t w, int *x, int *y)
+{
+	if (x != NULL) *x = w->x;
+	if (y != NULL) *y = w->y;
+}
 
 static int zdl_window_translate(zdl_window_t w, int down, XKeyEvent *event, struct zdl_event *ev)
 {
 	unsigned int nmod = ZDL_KEYMOD_NONE;
-	int drop = 0, i;
+	int drop = 0;
 	KeySym ks;
 
 	XLookupString(event, NULL, 0, &ks, NULL);
@@ -489,27 +566,10 @@ static int zdl_window_translate(zdl_window_t w, int down, XKeyEvent *event, stru
 		break;
 	}
 
-	if (w->grabbed) {
-		for (i = 0; i < sizeof(drop_keys) / sizeof(drop_keys[0]); ++i) {
-			if (drop_keys[i].sym == (KeySym)-1) {
-				drop = (drop_keys[i].mask & event->state);
-			} else if (drop_keys[i].sym == ks) {
-				if (drop_keys[i].mask)
-					drop = (drop_keys[i].mask & event->state);
-				else
-					drop = 1;
-			}
-			if (drop)
-				break;
-		}
-	}
-
 	if (drop) {
-		Window root;
 		XEvent xevent;
-		root = XRootWindow(w->display, w->screen);
 		xevent.xkey = *event;
-		XSendEvent(w->display, root, False,
+		XSendEvent(w->display, w->root, False,
 				KeyPressMask | KeyReleaseMask,
 				(XEvent *)event);
 		return -1;
@@ -576,6 +636,35 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 		ev->type = ZDL_EVENT_LOSEFOCUS;
 		break;
 	case ConfigureNotify:
+		if (event.xconfigure.window != w->window) {
+			rc = -1;
+			break;
+		}
+
+		if ((event.xconfigure.width  == w->width) &&
+		    (event.xconfigure.height == w->height) &&
+		    (event.xconfigure.x == w->lastconfig.x) &&
+		    (event.xconfigure.y == w->lastconfig.y)) {
+			rc = -1;
+			break;
+		}
+
+		if ((event.xconfigure.x != w->lastconfig.x) ||
+		    (event.xconfigure.y != w->lastconfig.y)) {
+			if (event.xconfigure.send_event == False) {
+				Window ret;
+				XTranslateCoordinates(w->display,
+						w->window, w->root,
+						0, 0, &w->x, &w->y, &ret);
+			} else {
+				w->x = event.xconfigure.x;
+				w->y = event.xconfigure.y;
+			}
+		}
+
+		w->lastconfig.x = event.xconfigure.x;
+		w->lastconfig.y = event.xconfigure.y;
+
 		ev->type = ZDL_EVENT_RECONFIGURE;
 		ev->reconfigure.width =  event.xconfigure.width;
 		ev->reconfigure.height = event.xconfigure.height;
@@ -616,34 +705,6 @@ void zdl_window_wait_event(zdl_window_t w, struct zdl_event *ev)
 	while (zdl_window_read_event(w, ev) != 0);
 }
 
-void zdl_window_show_cursor(zdl_window_t w, int shown)
-{
-	Cursor cursor;
-
-	if (shown == !w->hidecursor)
-		return;
-
-	if (!shown) {
-		static char bm_no_data[] = {0, 0, 0, 0, 0, 0, 0, 0};
-		XColor black;
-		Pixmap bm_no;
-		black.red = black.green = black.blue = 0;
-
-		bm_no = XCreateBitmapFromData(w->display, w->window, bm_no_data, 8, 8);
-		cursor = XCreatePixmapCursor(w->display, bm_no, bm_no, &black, &black, 0, 0);
-
-		XDefineCursor(w->display, w->window, cursor);
-		XFreeCursor(w->display, cursor);
-		if (bm_no != None)
-			XFreePixmap(w->display, bm_no);
-	} else {
-		cursor = XCreateFontCursor(w->display, XC_left_ptr);
-		XDefineCursor(w->display, w->window, cursor);
-		XFreeCursor(w->display, cursor);
-	}
-	w->hidecursor = !shown;
-}
-
 void zdl_window_swap(zdl_window_t w)
 {
 	glXSwapBuffers(w->display, w->window);
@@ -659,10 +720,6 @@ void zdl_window_set_title(zdl_window_t w, const char *icon, const char *name)
 	else if (icon == NULL)
 		icon = name;
 
-	if (w->title != NULL)
-		free(w->title);
-
-	w->title = strdup(name);
-
 	XStoreName(w->display, w->window, name);
+	XSetIconName(w->display, w->window, icon);
 }

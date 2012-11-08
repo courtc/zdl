@@ -37,13 +37,11 @@
 
 #ifdef _WIN32
 ZDL_EXPORT int zdl_win32_entry(int (* main)(int, char **));
-#ifndef ZDL_NO_WINMAIN
-ZDL_EXTERN int main(int argc, char **argv);
-int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
-{
-	return zdl_win32_entry(main);
-}
-#endif
+#define ZDL_MAIN_FIXUP \
+  int __stdcall WinMain(HINSTANCE i, HINSTANCE p, LPSTR txt, int cmd) \
+  { return zdl_win32_entry(main); }
+#else
+#define ZDL_MAIN_FIXUP
 #endif
 
 /**< Window flags */
@@ -51,9 +49,17 @@ enum zdl_flag_enum {
 	ZDL_FLAG_NONE       = 0,        /**< No flags */
 	ZDL_FLAG_FULLSCREEN = (1 << 0), /**< Fullscreen window */
 	ZDL_FLAG_NORESIZE   = (1 << 1), /**< Non-resizeable window */
+	ZDL_FLAG_NOCURSOR   = (1 << 2), /**< Invisible cursor */
+	ZDL_FLAG_NODECOR    = (1 << 3), /**< No window decoration */
 };
 /**< Window flag bitmask */
 typedef unsigned int zdl_flags_t;
+
+#define zdl_bitmask_set(mask,bit) ((mask) |  (bit))
+#define zdl_bitmask_clr(mask,bit) ((mask) & ~(bit))
+#define zdl_bitmask_tgl(mask,bit) ((mask) ^  (bit))
+#define zdl_bitmask_bool(mask,bit,bool) \
+  ((bool)?((mask)|(bit)):((mask)&~(bit)))
 
 /** Key modifier */
 enum zdl_keymod_enum {
@@ -251,8 +257,8 @@ enum zdl_button {
 	ZDL_BUTTON_LEFT   = 1, /**< Left button */
 	ZDL_BUTTON_RIGHT  = 2, /**< Right button */
 	ZDL_BUTTON_MIDDLE = 3, /**< Middle */
-	ZDL_BUTTON_MWDOWN = 4, /** Mouse-wheel down */
-	ZDL_BUTTON_MWUP   = 5, /** Mouse-wheel up */
+	ZDL_BUTTON_MWDOWN = 4, /**< Mouse-wheel down */
+	ZDL_BUTTON_MWUP   = 5, /**< Mouse-wheel up */
 };
 
 /** Event type */
@@ -360,11 +366,47 @@ ZDL_EXPORT void zdl_window_set_size(zdl_window_t w, int width, int height);
  */
 ZDL_EXPORT void zdl_window_get_size(const zdl_window_t w, int *width, int *height);
 
+/** Set window position.
+ * @param w Window handle.
+ * @param width Desired window x position.
+ * @param height Desired window y position.
+ */
+ZDL_EXPORT void zdl_window_set_position(zdl_window_t w, int x, int y);
+
+/** Get window position.
+ * @param w Window handle.
+ * @param width Pointer to where window x position should be stored.
+ * @param height Pointer to where window y position should be stored.
+ */
+ZDL_EXPORT void zdl_window_get_position(const zdl_window_t w, int *x, int *y);
+
 /** Set window cursor visibility.
  * @param w Window handle.
  * @param shown Whether to show the cursor in the window.
  */
-ZDL_EXPORT void zdl_window_show_cursor(zdl_window_t w, int shown);
+#define zdl_window_show_cursor(w, shown) \
+  zdl_window_set_flags(w, zdl_bitmask_bool(zdl_window_get_flags(w),ZDL_FLAG_NOCURSOR,!(shown)))
+
+/** Set window fullscreen state.
+ * @param w Window handle.
+ * @param fullscreen Whether to the window should be fullscreen.
+ */
+#define zdl_window_set_fullscreen(w, fullscreen) \
+  zdl_window_set_flags(w, zdl_bitmask_bool(zdl_window_get_flags(w),ZDL_FLAG_FULLSCREEN,fullscreen))
+
+/** Set window decoration state.
+ * @param w Window handle.
+ * @param enabled Whether to the window should be decorated.
+ */
+#define zdl_window_set_decor(w, enabled) \
+  zdl_window_set_flags(w, zdl_bitmask_bool(zdl_window_get_flags(w),ZDL_FLAG_NODECOR,!(enabled)))
+
+/** Set window resize capability.
+ * @param w Window handle.
+ * @param enabled Whether to the window should be resizeable.
+ */
+#define zdl_window_set_resize(w, enabled) \
+  zdl_window_set_flags(w, zdl_bitmask_bool(zdl_window_get_flags(w),ZDL_FLAG_NORESIZE,!(enabled)))
 
 /** Poll for window events.
  * @param w Window handle.
@@ -412,6 +454,12 @@ public:
 
 	void showCursor(bool show)
 	{ return zdl_window_show_cursor(m_win, show); }
+	void setFullscreen(bool fullscreen)
+	{ return zdl_window_set_fullscreen(m_win, fullscreen); }
+	void setDecor(bool enabled)
+	{ return zdl_window_set_decor(m_win, enabled); }
+	void setResize(bool enabled)
+	{ return zdl_window_set_resize(m_win, enabled); }
 
 	int pollEvent(struct zdl_event *ev)
 	{ return zdl_window_poll_event(m_win, ev); }
