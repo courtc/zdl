@@ -481,7 +481,7 @@ static void zdl_adjust_size(zdl_window_t w, int *width, int *height, DWORD *styl
 	RECT rect;
 
 	if (flags & (ZDL_FLAG_FULLSCREEN | ZDL_FLAG_NODECOR))
-		*style = WS_DISABLED;
+		*style = WS_POPUP;
 	else if (!(flags & ZDL_FLAG_NORESIZE))
 		*style = WS_OVERLAPPEDWINDOW;
 	else
@@ -543,8 +543,8 @@ zdl_window_t zdl_window_create(int width, int height, zdl_flags_t flags)
 		return ZDL_WINDOW_INVALID;
 	}
 
-	w->width = width;
-	w->height = height;
+	w->masked.width = w->width = width;
+	w->masked.height = w->height = height;
 	w->flags = flags & ~(ZDL_FLAG_NOCURSOR);
 
 	zdl_adjust_size(w, &width, &height, &w->style, w->flags);
@@ -590,11 +590,13 @@ void zdl_window_destroy(zdl_window_t w)
 void zdl_window_set_flags(zdl_window_t w, zdl_flags_t flags)
 {
 	zdl_flags_t chg = flags ^ w->flags;
-	int width, height;
+	int width, height, x, y;
 
 	if (chg == ZDL_FLAG_NONE)
 		return;
 
+	x = w->x;
+	y = w->y;
 	width = w->width;
 	height = w->height;
 
@@ -610,19 +612,19 @@ void zdl_window_set_flags(zdl_window_t w, zdl_flags_t flags)
 			w->masked.height = w->height;
 			w->masked.x = w->x;
 			w->masked.y = w->y;
-			w->x = 0;
-			w->y = 0;
+			x = 0;
+			y = 0;
 		} else {
 			width = w->masked.width;
 			height = w->masked.height;
-			w->x = w->masked.x;
-			w->y = w->masked.y;
+			x = w->masked.x;
+			y = w->masked.y;
 		}
 	}
 
 	zdl_adjust_size(w, &width, &height, &w->style, flags);
 	SetWindowLong(w->window, GWL_STYLE, w->style);
-	SetWindowPos(w->window,0,w->x,w->y,width,height,SWP_NOZORDER|SWP_NOACTIVATE);
+	SetWindowPos(w->window,0,x,y,width,height,SWP_NOZORDER|SWP_NOACTIVATE);
 
 	if (chg & ZDL_FLAG_NOCURSOR)
 		ShowCursor(!(flags & ZDL_FLAG_NOCURSOR));
