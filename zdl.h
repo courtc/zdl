@@ -517,7 +517,7 @@ public:
 	{ return zdl_clipboard_write(m_clip, data); }
 
 private:
-	zdl_clipboard m_clip;
+	zdl_clipboard_t m_clip;
 };
 
 class Window {
