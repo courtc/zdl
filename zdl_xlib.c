@@ -214,6 +214,7 @@ static int zdl_window_reconfigure(zdl_window_t w, int width, int height, zdl_fla
 	if (flags & ZDL_FLAG_FULLSCREEN)
 		XMoveWindow(w->display, w->window, 0, 0);
 
+	XFree(vi);
 
 	if (!glXMakeCurrent(w->display, w->window, w->context)) {
 		fprintf(stderr, "Unable to make context current\n");
@@ -280,6 +281,7 @@ zdl_window_t zdl_window_create(int width, int height, zdl_flags_t flags)
 void zdl_window_destroy(zdl_window_t w)
 {
 	XFreeColormap(w->display, w->colormap);
+	glXMakeCurrent(w->display, None, NULL);
 	XDestroyWindow(w->display, w->window);
 	glXDestroyContext(w->display, w->context);
 	XCloseDisplay(w->display);
