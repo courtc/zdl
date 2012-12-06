@@ -51,6 +51,7 @@ enum zdl_flag_enum {
 	ZDL_FLAG_NORESIZE   = (1 << 1), /**< Non-resizeable window */
 	ZDL_FLAG_NOCURSOR   = (1 << 2), /**< Invisible cursor */
 	ZDL_FLAG_NODECOR    = (1 << 3), /**< No window decoration */
+	ZDL_FLAG_FLIP_Y     = (1 << 4), /**< Y-axis is flipped (Read-Only) */
 };
 /**< Window flag bitmask */
 typedef unsigned int zdl_flags_t;
@@ -104,6 +105,7 @@ enum zdl_keysym {
 	ZDL_KEYSYM_QUOTEDBL,
 	ZDL_KEYSYM_HASH,
 	ZDL_KEYSYM_DOLLAR,
+	ZDL_KEYSYM_PERCENT,
 	ZDL_KEYSYM_AMPERSAND,
 	ZDL_KEYSYM_QUOTE,
 	ZDL_KEYSYM_LEFTPAREN,
@@ -434,12 +436,12 @@ public:
 	Window(int width, int height, int flags)
 	{
 		m_win = zdl_window_create(width, height, flags);
-		if (m_win == NULL) throw 0;
+		if (m_win == 0) throw 0;
 	}
 	~Window()
 	{ zdl_window_destroy(m_win); }
 
-	void setTitle(const char *icon, const char *name = NULL)
+	void setTitle(const char *icon, const char *name = 0)
 	{ zdl_window_set_title(m_win, icon, name); }
 
 	void setFlags(zdl_flags_t flags)
