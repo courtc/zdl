@@ -51,7 +51,9 @@ enum zdl_flag_enum {
 	ZDL_FLAG_NORESIZE   = (1 << 1), /**< Non-resizeable window */
 	ZDL_FLAG_NOCURSOR   = (1 << 2), /**< Invisible cursor */
 	ZDL_FLAG_NODECOR    = (1 << 3), /**< No window decoration */
-	ZDL_FLAG_FLIP_Y     = (1 << 4), /**< Y-axis is flipped (Read-Only) */
+	ZDL_FLAG_CLIPBOARD  = (1 << 4), /**< Enable clipboard operation */
+	ZDL_FLAG_COPYONHL   = (1 << 5), /**< Copy on highlight (Read-Only) */
+	ZDL_FLAG_FLIP_Y     = (1 << 6), /**< Y-axis is flipped (Read-Only) */
 };
 /**< Window flag bitmask */
 typedef unsigned int zdl_flags_t;
@@ -281,6 +283,9 @@ enum zdl_event_type {
 	ZDL_EVENT_HIDE,          /**< Window was hidden */
 	ZDL_EVENT_ERROR,         /**< Unrecoverable error happened */
 	ZDL_EVENT_EXIT,          /**< Window manager requested exit */
+	ZDL_EVENT_COPY,          /**< Window manager requested copy */
+	ZDL_EVENT_PASTE,         /**< Window manager requested paste */
+	ZDL_EVENT_CUT,           /**< Window manager requested cut */
 };
 
 /** Event */
@@ -410,6 +415,14 @@ ZDL_EXPORT void zdl_window_get_position(const zdl_window_t w, int *x, int *y);
 #define zdl_window_set_resize(w, enabled) \
   zdl_window_set_flags(w, zdl_bitmask_bool(zdl_window_get_flags(w),ZDL_FLAG_NORESIZE,!(enabled)))
 
+/** Set window clipboard capability.
+ * @param w Window handle.
+ * @param enabled Whether the window should handle clipboard operations.
+ */
+#define zdl_window_set_clipboard(w, enabled) \
+  zdl_window_set_flags(w, zdl_bitmask_bool(zdl_window_get_flags(w),ZDL_FLAG_CLIPBOARD,enabled))
+
+
 /** Poll for window events.
  * @param w Window handle.
  * @param ev Pointer to event structure to fill-out
@@ -428,8 +441,84 @@ ZDL_EXPORT void zdl_window_wait_event(zdl_window_t w, struct zdl_event *ev);
  */
 ZDL_EXPORT void zdl_window_swap(zdl_window_t w);
 
+/** Clipboard handle. */
+typedef struct zdl_clipboard *zdl_clipboard_t;
+
+/** Invalid clipboard handle. */
+#define ZDL_CLIPBOARD_INVALID ((zdl_clipboard_t)0)
+
+/** Clipboard format */
+enum zdl_clipboard_format {
+	ZDL_CLIPBOARD_TEXT,  /**< Plain UTF-8 text. */
+	ZDL_CLIPBOARD_IMAGE, /**< ARGB8888 pixels. */
+	ZDL_CLIPBOARD_URI,   /**< ASCII URI. */
+};
+
+/** Clipboard data */
+struct zdl_clipboard_data {
+	enum zdl_clipboard_format format; /**< Clipboard format. */
+	union {
+		struct {
+			const char *text; /**< NULL terminated UTF-8. */
+		} text;
+		struct {
+			const unsigned int *pixels; /**< Image pixels. */
+			int width; /**< Image width. */
+			int height; /**< Image height. */
+		} image;
+		struct {
+			const char *uri; /**< NULL terminated ASCII uri */
+		} uri;
+	};
+};
+
+/** Open the window manager's clipboard.
+ * @param w Window handle.
+ * @return Clipboard handle on success, ZDL_CLIPBOARD_INVALID on failure.
+ */
+ZDL_EXPORT zdl_clipboard_t zdl_clipboard_open(zdl_window_t w);
+
+/** Close clipboard.
+ * @param c Clipboard handle.
+ */
+ZDL_EXPORT void zdl_clipboard_close(zdl_clipboard_t c);
+
+/** Write to clipboard.
+ * @param c Clipboard handle.
+ * @param data Pointer to clipboard data.
+ * @return 0 on success, !0 on failure.
+ */
+ZDL_EXPORT int zdl_clipboard_write(zdl_clipboard_t c, const struct zdl_clipboard_data *data);
+
+/** Read from clipboard.
+ * @param c Clipboard handle.
+ * @param data Pointer where clipboard data should be written.
+ * @return 0 on success, !0 on failure.
+ */
+ZDL_EXPORT int zdl_clipboard_read(zdl_clipboard_t c, struct zdl_clipboard_data *data);
+
 #ifdef __cplusplus
 namespace ZDL {
+
+class Clipboard {
+public:
+	Clipboard(zdl_window_t w)
+	{
+		m_clip = zdl_clipboard_open(w);
+		if (m_clip == 0) throw 0;
+	}
+	~Clipboard()
+	{ zdl_clipboard_close(m_clip); }
+
+	int read(struct zdl_clipboard_data *data)
+	{ return zdl_clipboard_read(m_clip, data); }
+
+	int write(const struct zdl_clipboard_data *data)
+	{ return zdl_clipboard_write(m_clip, data); }
+
+private:
+	zdl_clipboard m_clip;
+};
 
 class Window {
 public:
@@ -462,6 +551,8 @@ public:
 	{ return zdl_window_set_decor(m_win, enabled); }
 	void setResize(bool enabled)
 	{ return zdl_window_set_resize(m_win, enabled); }
+	void setClipboard(bool enabled)
+	{ return zdl_window_set_clipboard(m_win, enabled); }
 
 	int pollEvent(struct zdl_event *ev)
 	{ return zdl_window_poll_event(m_win, ev); }
@@ -471,6 +562,11 @@ public:
 
 	void swap(void)
 	{ zdl_window_swap(m_win); }
+
+	Clipboard *getClipboard(void)
+	{
+		return new Clipboard(m_win);
+	}
 
 private:
 	zdl_window_t m_win;

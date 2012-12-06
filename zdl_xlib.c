@@ -61,6 +61,7 @@ struct zdl_window {
 	struct { int x, y; } lastmotion;
 	unsigned int modifiers;
 	Atom wm_delete_window;
+	struct zdl_clipboard_data clipboard;
 };
 
 #define MWM_HINTS_DECORATIONS   (1L << 1)
@@ -285,6 +286,8 @@ void zdl_window_destroy(zdl_window_t w)
 	XDestroyWindow(w->display, w->window);
 	glXDestroyContext(w->display, w->context);
 	XCloseDisplay(w->display);
+	if (w->clipboard.text.text != NULL)
+		free((void *)w->clipboard.text.text);
 	free(w);
 }
 
@@ -346,7 +349,7 @@ void zdl_window_set_flags(zdl_window_t w, zdl_flags_t flags)
 		}
 	}
 
-	w->flags = flags;
+	w->flags = flags | ZDL_FLAG_COPYONHL;
 }
 
 zdl_flags_t zdl_window_get_flags(const zdl_window_t w)
@@ -592,6 +595,7 @@ static int zdl_window_translate(zdl_window_t w, int down, XKeyEvent *event, stru
 
 static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 {
+	XEvent resp;
 	XEvent event;
 	int rc;
 
@@ -609,10 +613,14 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 		rc = zdl_window_translate(w, 0, &event.xkey, ev);
 		break;
 	case ButtonPress:
-		ev->type = ZDL_EVENT_BUTTONPRESS;
-		ev->button.x = event.xbutton.x;
-		ev->button.y = event.xbutton.y;
-		ev->button.button = event.xbutton.button;
+		if (w->flags & ZDL_FLAG_CLIPBOARD && event.xbutton.button == 3) {
+			ev->type = ZDL_EVENT_PASTE;
+		} else {
+			ev->type = ZDL_EVENT_BUTTONPRESS;
+			ev->button.x = event.xbutton.x;
+			ev->button.y = event.xbutton.y;
+			ev->button.button = event.xbutton.button;
+		}
 		break;
 	case ButtonRelease:
 		ev->type = ZDL_EVENT_BUTTONRELEASE;
@@ -686,6 +694,30 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 			rc = -1;
 		}
 		break;
+	case SelectionRequest:
+		if (w->clipboard.text.text == NULL) {
+			resp.xselection.property = None;
+		} else if (event.xselectionrequest.target == XA_STRING) {
+			XChangeProperty(w->display,
+				event.xselectionrequest.requestor,
+				event.xselectionrequest.property,
+				XA_STRING, 8, PropModeReplace,
+				(unsigned char *)w->clipboard.text.text,
+				strlen(w->clipboard.text.text));
+			resp.xselection.property = event.xselectionrequest.property;
+		} else {
+			resp.xselection.property = None;
+		}
+		resp.xselection.type = SelectionNotify;
+		resp.xselection.display = event.xselectionrequest.display;
+		resp.xselection.requestor = event.xselectionrequest.requestor;
+		resp.xselection.selection = event.xselectionrequest.selection;
+		resp.xselection.target = event.xselectionrequest.target;
+		resp.xselection.time = event.xselectionrequest.time;
+		XSendEvent(w->display, event.xselectionrequest.requestor,
+				0, 0, &resp);
+		rc = -1;
+		break;
 	default:
 		rc = -1;
 		break;
@@ -724,4 +756,90 @@ void zdl_window_set_title(zdl_window_t w, const char *icon, const char *name)
 
 	XStoreName(w->display, w->window, name);
 	XSetIconName(w->display, w->window, icon);
+}
+
+struct zdl_clipboard {
+	zdl_window_t window;
+	unsigned char *data;
+};
+
+zdl_clipboard_t zdl_clipboard_open(zdl_window_t w)
+{
+	zdl_clipboard_t c;
+
+	c = (zdl_clipboard_t)calloc(1, sizeof(*c));
+	if (c == NULL)
+		return ZDL_CLIPBOARD_INVALID;
+
+	c->window = w;
+
+	return c;
+}
+
+void zdl_clipboard_close(zdl_clipboard_t c)
+{
+	if (c->data != NULL) {
+		XFree(c->data);
+		c->data = NULL;
+	}
+	free(c);
+}
+
+int zdl_clipboard_write(zdl_clipboard_t c, const struct zdl_clipboard_data *data)
+{
+	if (data->format != ZDL_CLIPBOARD_URI &&
+	    data->format != ZDL_CLIPBOARD_TEXT)
+		return -1;
+
+	if (c->window->clipboard.text.text != NULL)
+		free((void *)c->window->clipboard.text.text);
+
+	if (data->format == ZDL_CLIPBOARD_URI)
+		c->window->clipboard.text.text = strdup(data->uri.uri);
+	else if (data->format == ZDL_CLIPBOARD_TEXT)
+		c->window->clipboard.text.text = strdup(data->text.text);
+
+	XSetSelectionOwner(c->window->display, XA_PRIMARY,
+			c->window->window, CurrentTime);
+	return 0;
+}
+
+int zdl_clipboard_read(zdl_clipboard_t c, struct zdl_clipboard_data *data)
+{
+	Window owner;
+	unsigned long len, type, bytes_left, dummy;
+	unsigned char *text;
+	int format, rc;
+
+	if (c->data != NULL) {
+		XFree(c->data);
+		c->data = NULL;
+	}
+
+	owner = XGetSelectionOwner(c->window->display, XA_PRIMARY);
+	if (owner == None)
+		return -1;
+
+	XConvertSelection(c->window->display, XA_PRIMARY,
+			XA_STRING, None, owner, CurrentTime);
+	XFlush(c->window->display);
+
+	XGetWindowProperty(c->window->display, owner,
+			XA_STRING, 0, 0, 0, AnyPropertyType,
+			&type, &format,	&len, &bytes_left, &text);
+
+	if (bytes_left == 0)
+		return -1;
+
+	rc = XGetWindowProperty(c->window->display, owner,
+			XA_STRING, 0, bytes_left, 0, AnyPropertyType,
+			&type, &format, &len, &dummy, &text);
+	if (rc != Success)
+		return -1;
+
+	c->data = text;
+	data->format = ZDL_CLIPBOARD_TEXT;
+	data->text.text = (char *)text;
+
+	return 0;
 }
