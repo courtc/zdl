@@ -707,6 +707,11 @@ void zdl_window_wait_event(zdl_window_t w, struct zdl_event *ev)
 	while (zdl_window_read_event(w, ev) != 0);
 }
 
+void zdl_window_warp_mouse(zdl_window_t w, int x, int y)
+{
+	XWarpPointer(w->display, None, w->window, 0, 0, 0, 0, x, y);
+}
+
 void zdl_window_swap(zdl_window_t w)
 {
 	glXSwapBuffers(w->display, w->window);

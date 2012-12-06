@@ -423,6 +423,13 @@ ZDL_EXPORT int  zdl_window_poll_event(zdl_window_t w, struct zdl_event *ev);
  */
 ZDL_EXPORT void zdl_window_wait_event(zdl_window_t w, struct zdl_event *ev);
 
+/** Warp mouse pointer.
+ * @param w Window handle.
+ * @param x New X position of mouse.
+ * @param y New Y position of mouse.
+ */
+ZDL_EXPORT void zdl_window_warp_mouse(zdl_window_t w, int x, int y);
+
 /** Swap window buffers.
  * @param w Window handle.
  */
@@ -462,6 +469,9 @@ public:
 	{ return zdl_window_set_decor(m_win, enabled); }
 	void setResize(bool enabled)
 	{ return zdl_window_set_resize(m_win, enabled); }
+
+	void warpMouse(int x, int y)
+	{ zdl_window_warp_mouse(m_win, x, y); }
 
 	int pollEvent(struct zdl_event *ev)
 	{ return zdl_window_poll_event(m_win, ev); }
