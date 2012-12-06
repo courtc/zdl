@@ -391,21 +391,21 @@ ZDL_EXPORT void zdl_window_get_position(const zdl_window_t w, int *x, int *y);
 
 /** Set window fullscreen state.
  * @param w Window handle.
- * @param fullscreen Whether to the window should be fullscreen.
+ * @param fullscreen Whether the window should be fullscreen.
  */
 #define zdl_window_set_fullscreen(w, fullscreen) \
   zdl_window_set_flags(w, zdl_bitmask_bool(zdl_window_get_flags(w),ZDL_FLAG_FULLSCREEN,fullscreen))
 
 /** Set window decoration state.
  * @param w Window handle.
- * @param enabled Whether to the window should be decorated.
+ * @param enabled Whether the window should be decorated.
  */
 #define zdl_window_set_decor(w, enabled) \
   zdl_window_set_flags(w, zdl_bitmask_bool(zdl_window_get_flags(w),ZDL_FLAG_NODECOR,!(enabled)))
 
 /** Set window resize capability.
  * @param w Window handle.
- * @param enabled Whether to the window should be resizeable.
+ * @param enabled Whether the window should be resizeable.
  */
 #define zdl_window_set_resize(w, enabled) \
   zdl_window_set_flags(w, zdl_bitmask_bool(zdl_window_get_flags(w),ZDL_FLAG_NORESIZE,!(enabled)))
