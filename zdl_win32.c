@@ -706,6 +706,19 @@ void zdl_window_wait_event(zdl_window_t w, struct zdl_event *ev)
 	}
 }
 
+void zdl_window_warp_mouse(zdl_window_t w, int x, int y)
+{
+	RECT rect = {
+			w->x, w->y,
+			w->width, w->height
+	};
+
+	AdjustWindowRect(&rect, w->style, FALSE);
+	rect.left = w->x + (w->x - rect.left);
+	rect.top  = w->y + (w->y - rect.top);
+	SetCursorPos(rect.left + x, rect.top + y);
+}
+
 void zdl_window_swap(zdl_window_t w)
 {
 	SwapBuffers(w->hDeviceContext);
