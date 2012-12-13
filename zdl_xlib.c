@@ -610,7 +610,19 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 		break;
 	case KeyRelease:
 		ev->type = ZDL_EVENT_KEYRELEASE;
-		rc = zdl_window_translate(w, 0, &event.xkey, ev);
+		if (XEventsQueued(w->display, QueuedAfterReading)) {
+			XEvent nev;
+			XPeekEvent(w->display, &nev);
+			if (nev.type == KeyPress &&
+			    nev.xkey.time == event.xkey.time &&
+			    nev.xkey.keycode == event.xkey.keycode) {
+				rc = -1;
+				if (!(w->flags & ZDL_FLAG_KEYREPEAT))
+					XNextEvent(w->display, &nev);
+			}
+		}
+		if (rc != -1)
+			rc = zdl_window_translate(w, 0, &event.xkey, ev);
 		break;
 	case ButtonPress:
 		if (w->flags & ZDL_FLAG_CLIPBOARD && event.xbutton.button == 3) {
