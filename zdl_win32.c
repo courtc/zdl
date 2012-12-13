@@ -390,6 +390,8 @@ static LRESULT CALLBACK zdl_WndProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
 		zdl_queue_smash_key(&w->queue, &ev);
 		break;
 	case WM_KEYDOWN:
+		if (!(w->flags & ZDL_FLAG_KEYREPEAT) && (lParam & 0x40000000))
+			break;
 		if (zdl_translate(w, wParam, lParam, &ev))
 			break;
 		ev.type = ZDL_EVENT_KEYPRESS;

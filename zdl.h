@@ -53,7 +53,8 @@ enum zdl_flag_enum {
 	ZDL_FLAG_NODECOR    = (1 << 3), /**< No window decoration */
 	ZDL_FLAG_CLIPBOARD  = (1 << 4), /**< Enable clipboard operation */
 	ZDL_FLAG_COPYONHL   = (1 << 5), /**< Copy on highlight (Read-Only) */
-	ZDL_FLAG_FLIP_Y     = (1 << 6), /**< Y-axis is flipped (Read-Only) */
+	ZDL_FLAG_KEYREPEAT  = (1 << 6), /**< Enable key-repeat */
+	ZDL_FLAG_FLIP_Y     = (1 << 7), /**< Y-axis is flipped (Read-Only) */
 };
 /**< Window flag bitmask */
 typedef unsigned int zdl_flags_t;
@@ -422,6 +423,12 @@ ZDL_EXPORT void zdl_window_get_position(const zdl_window_t w, int *x, int *y);
 #define zdl_window_set_clipboard(w, enabled) \
   zdl_window_set_flags(w, zdl_bitmask_bool(zdl_window_get_flags(w),ZDL_FLAG_CLIPBOARD,enabled))
 
+/** Set window key-repeat capability.
+ * @param w Window handle.
+ * @param enabled Whether the key-repeat should be enabled.
+ */
+#define zdl_window_set_keyrepeat(w, enabled) \
+  zdl_window_set_flags(w, zdl_bitmask_bool(zdl_window_get_flags(w),ZDL_FLAG_KEYREPEAT,enabled))
 
 /** Poll for window events.
  * @param w Window handle.
@@ -560,6 +567,8 @@ public:
 	{ return zdl_window_set_resize(m_win, enabled); }
 	void setClipboard(bool enabled)
 	{ return zdl_window_set_clipboard(m_win, enabled); }
+	void setKeyRepeat(bool enabled)
+	{ return zdl_window_set_keyrepeat(m_win, enabled); }
 
 	void warpMouse(int x, int y)
 	{ zdl_window_warp_mouse(m_win, x, y); }
