@@ -175,8 +175,10 @@ static void drm_destroy(struct drm_context *ctx)
 }
 
 struct egl_context {
+	struct gbm_surface *surface;
 	struct drm_context *drm;
 	struct gbm_device *gbm;
+	EGLSurface egl_surface;
 	EGLContext context;
 	GLuint framebuffer;
 	EGLDisplay display;
@@ -197,9 +199,18 @@ struct egl_context {
 static struct egl_context *egl_create(void)
 {
 	struct egl_context *egl;
-	const char *ver, *ext;
 	EGLint major, minor;
-	int i;
+	static const EGLint config_attribs[] = {
+		EGL_RED_SIZE, 8,
+		EGL_GREEN_SIZE, 8,
+		EGL_BLUE_SIZE, 8,
+		EGL_ALPHA_SIZE, 0,
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+		EGL_NONE
+	};
+	EGLConfig config;
+	const char *ver;
+	int i, n;
 
 	egl = (struct egl_context *)calloc(1, sizeof(*egl));
 	if (egl == NULL) {
@@ -232,26 +243,49 @@ static struct egl_context *egl_create(void)
 
 	ver = eglQueryString(egl->display, EGL_VERSION);
 
-	ext = eglQueryString(egl->display, EGL_EXTENSIONS);
-	if (!strstr(ext, "EGL_KHR_surfaceless_opengl")) {
-		fatal("Surfaceless support not found\n");
-		goto err_egl_surfaceless;
-	}
-
 	egl->drm = drm_create(egl->dri_fd);
 	if (egl->drm == NULL) {
 		fatal("Failed to create DRM context\n");
 		goto err_drm_create;
 	}
 
-	eglBindAPI(EGL_OPENGL_API);
-	egl->context = eglCreateContext(egl->display, NULL, EGL_NO_CONTEXT, NULL);
+	if (!eglBindAPI(EGL_OPENGL_API)) {
+		fatal("Failed to create bind OpenGL API\n");
+		goto err_egl_bind;
+	}
+
+	if (!eglChooseConfig(egl->display, config_attribs,
+			     &config, 1, &n) || n != 1) {
+		fatal("Failed to choose EGL config\n");
+		goto err_egl_chooseconfig;
+	}
+
+	egl->context = eglCreateContext(egl->display, config,
+			EGL_NO_CONTEXT, NULL);
 	if (egl->context == EGL_NO_CONTEXT) {
 		fatal("Failed to create context\n");
 		goto err_egl_createctx;
 	}
 
-	eglMakeCurrent(egl->display, EGL_NO_SURFACE, EGL_NO_SURFACE, egl->context);
+	egl->surface = gbm_surface_create(egl->gbm, 10, 10,
+			GBM_FORMAT_XRGB8888, GBM_BO_USE_RENDERING);
+	if (!egl->surface) {
+		fatal("Failed to create dummy gbm surface\n");
+		goto err_gbm_surface;
+	}
+
+	egl->egl_surface = eglCreateWindowSurface(egl->display,
+			config, (EGLNativeWindowType)egl->surface, NULL);
+	if (egl->egl_surface == EGL_NO_SURFACE) {
+		fatal("Failed to create EGL surface\n");
+		goto err_egl_surface;
+	}
+
+	if (!eglMakeCurrent(egl->display, egl->egl_surface,
+			egl->egl_surface, egl->context)) {
+		fatal("Failed to set EGL context\n");
+		goto err_egl_current;
+	}
 
 	glGenFramebuffers(1, &egl->framebuffer);
 	glBindFramebuffer(GL_FRAMEBUFFER_EXT, egl->framebuffer);
@@ -262,7 +296,9 @@ static struct egl_context *egl_create(void)
 		glGenRenderbuffers(1, &egl->rb[i].color);
 		glGenRenderbuffers(1, &egl->rb[i].depth);
 
-		egl->rb[i].bo = gbm_bo_create(egl->gbm, egl->drm->info->hdisplay, egl->drm->info->vdisplay,
+		egl->rb[i].bo = gbm_bo_create(egl->gbm,
+				egl->drm->info->hdisplay,
+				egl->drm->info->vdisplay,
 				GBM_BO_FORMAT_XRGB8888,
 				GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
 		if (egl->rb[i].bo == NULL) {
@@ -271,7 +307,7 @@ static struct egl_context *egl_create(void)
 		}
 
 		handle = gbm_bo_get_handle(egl->rb[i].bo).u32;
-		stride = gbm_bo_get_pitch(egl->rb[i].bo);
+		stride = gbm_bo_get_stride(egl->rb[i].bo);
 
 		drmModeAddFB(egl->dri_fd, egl->drm->info->hdisplay,
 				egl->drm->info->vdisplay, 24, 32,
@@ -329,12 +365,19 @@ err_rb_create:
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER_EXT, 0);
 	glDeleteFramebuffers(1, &egl->framebuffer);
-	eglMakeCurrent(egl->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+	eglMakeCurrent(egl->display, EGL_NO_SURFACE,
+			EGL_NO_SURFACE, EGL_NO_CONTEXT);
+err_egl_current:
+	eglDestroySurface(egl->display, egl->egl_surface);
+err_egl_surface:
+	gbm_surface_destroy(egl->surface);
+err_gbm_surface:
 	eglDestroyContext(egl->display, egl->context);
 err_egl_createctx:
+err_egl_chooseconfig:
+err_egl_bind:
 	drm_destroy(egl->drm);
 err_drm_create:
-err_egl_surfaceless:
 	eglTerminate(egl->display);
 err_egl_init:
 err_egl_getdisplay:
@@ -359,7 +402,10 @@ static void egl_destroy(struct egl_context *egl)
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER_EXT, 0);
 	glDeleteFramebuffers(1, &egl->framebuffer);
-	eglMakeCurrent(egl->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+	eglMakeCurrent(egl->display, EGL_NO_SURFACE,
+			EGL_NO_SURFACE, EGL_NO_CONTEXT);
+	eglDestroySurface(egl->display, egl->egl_surface);
+	gbm_surface_destroy(egl->surface);
 	eglDestroyContext(egl->display, egl->context);
 	drm_destroy(egl->drm);
 	eglTerminate(egl->display);
@@ -751,6 +797,7 @@ struct zdl_window {
 	zdl_flags_t flags;
 	struct egl_context *context;
 	struct tty *tty;
+	struct zdl_clipboard_data clipboard;
 };
 
 zdl_window_t zdl_window_create(int width, int height, zdl_flags_t flags)
@@ -787,6 +834,8 @@ zdl_window_t zdl_window_create(int width, int height, zdl_flags_t flags)
 
 void zdl_window_destroy(zdl_window_t w)
 {
+	if (w->clipboard.text.text != NULL)
+		free((void *)w->clipboard.text.text);
 	egl_destroy(w->context);
 	tty_destroy(w->tty);
 	free(w);
@@ -878,4 +927,76 @@ void zdl_window_wait_event(zdl_window_t w, struct zdl_event *ev)
 void zdl_window_swap(zdl_window_t w)
 {
 	egl_swap(w->context);
+}
+
+struct zdl_clipboard {
+	zdl_window_t window;
+	void *data;
+};
+
+zdl_clipboard_t zdl_clipboard_open(zdl_window_t w)
+{
+	zdl_clipboard_t c;
+
+	c = (zdl_clipboard_t)calloc(1, sizeof(*c));
+	if (c == NULL)
+		return ZDL_CLIPBOARD_INVALID;
+
+	return c;
+}
+
+void zdl_clipboard_close(zdl_clipboard_t c)
+{
+	free(c);
+}
+
+static int zdl_clipboard_copy(const struct zdl_clipboard_data *from,
+		struct zdl_clipboard_data *to, void **memory)
+{
+	memset(to, 0, sizeof(*to));
+
+	to->format = from->format;
+	switch (from->format) {
+	case ZDL_CLIPBOARD_TEXT:
+		if (from->text.text == NULL)
+			return -1;
+		to->text.text = strdup(from->text.text);
+		*memory = (void *)to->text.text;
+		break;
+	case ZDL_CLIPBOARD_URI:
+		if (from->uri.uri == NULL)
+			return -1;
+		to->uri.uri = strdup(from->uri.uri);
+		*memory = (void *)to->uri.uri;
+		break;
+	case ZDL_CLIPBOARD_IMAGE:
+		if (from->image.pixels == NULL)
+			return -1;
+		to->image.pixels = (unsigned int *)calloc(4, from->image.width * from->image.height);
+		if (to->image.pixels == NULL)
+			return -1;
+		to->image.width = from->image.width;
+		to->image.height = from->image.height;
+		memcpy((void *)to->image.pixels, from->image.pixels,
+				4 * from->image.width * from->image.height);
+		*memory = (void *)to->image.pixels;
+		break;
+	}
+
+	return 0;
+}
+
+int zdl_clipboard_write(zdl_clipboard_t c, const struct zdl_clipboard_data *data)
+{
+	if (c->data != NULL) {
+		free(c->data);
+		c->data = NULL;
+	}
+
+	return zdl_clipboard_copy(data, &c->window->clipboard, &c->data);
+}
+
+int zdl_clipboard_read(zdl_clipboard_t c, struct zdl_clipboard_data *data)
+{
+	return zdl_clipboard_copy(&c->window->clipboard, data, &c->data);
 }
