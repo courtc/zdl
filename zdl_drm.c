@@ -941,6 +941,8 @@ zdl_clipboard_t zdl_clipboard_open(zdl_window_t w)
 	c = (zdl_clipboard_t)calloc(1, sizeof(*c));
 	if (c == NULL)
 		return ZDL_CLIPBOARD_INVALID;
+	c->window = w;
+	c->data = (void *)w->clipboard.text.text;
 
 	return c;
 }
@@ -998,5 +1000,8 @@ int zdl_clipboard_write(zdl_clipboard_t c, const struct zdl_clipboard_data *data
 
 int zdl_clipboard_read(zdl_clipboard_t c, struct zdl_clipboard_data *data)
 {
-	return zdl_clipboard_copy(&c->window->clipboard, data, &c->data);
+	if (c->data == NULL)
+		return -1;
+	*data = c->window->clipboard;
+	return 0;
 }
