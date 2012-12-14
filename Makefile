@@ -13,7 +13,7 @@ $(tst): $(objs) test.o | $(tgt)
 	#LD_LIBRARY_PATH=. ./$@
 
 $(tgt): $(objs)
-	$(CXX) -o $@ $^ $(SO_LDFLAGS)
+	$(CC) -o $@ $^ $(SO_LDFLAGS)
 
 clean:
 	$(RM) $(tgt) $(objs) test.o
