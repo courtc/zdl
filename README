@@ -1,0 +1,27 @@
+Zeta Display Library (ZDL) is a portable windowing abtraction layer.
+
+CAUTION: This library is currently in alpha and is not yet versioned. Expect radical API changes.
+
+It's design goals include:
+	- GL(ES) support on all platforms
+	- "Write once, port everywhere" window & input management
+
+Currently planned targets include:
+	- X11 (Xlib & xcb)
+	- Win32
+	- Metro
+	- Cocoa
+	- Android
+	- DRM
+
+It differs from SDL (1.2 at least) in these aspects:
+	- No mode setting (Always runs at native resolution)
+	- No pixel buffer; All windows are GL windows only
+	- Allows window manager intervention on all platforms (e.g. Alt-Tab on X11)
+	- Multiple windows
+	- Single instance GL context (e.g. during fullscreen toggle)
+	- Clipboard support
+	- Multi-finger touch & hover support
+
+Why not support mode setting?
+	Well, the simple answer to this question is: Because it cannot be done correctly in a portable manner. For example, if you take a look at how SDL does mode setting, you'll find that they set the OverrideRedirect bit for xlib.  Unfortunately this prevents things like Alt-Tabbing in fullscreen mode, which simply irritates the hell out of me.  From their perspective however it makes sense; not setting that bit would result in you having the capability of switching to other--possibly offscreen--applications while still running at whatever stupid resolution you chose.  Moreover it would seem that these days lowering resolution doesn't cause major speed-ups in GPUs, unless for some reason you are doing something wrong when it comes to fill-rate.  Finally, native resolution fullscreen always looks best, and lower--or higher--resolutions can be emulated with render-buffers or textures if neccessary.  JFYI, there will be an add-on library in the future for those who like doing all the rastering themselves, which will do pseudo-mode setting.

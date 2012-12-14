@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <sys/time.h>
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <X11/cursorfont.h>
@@ -41,6 +42,7 @@
 struct zdl_window {
 	Display *display;
 	int mapped;
+	int eatpaste;
 	int screen;
 	int x, y;
 	int width, height;
@@ -61,6 +63,7 @@ struct zdl_window {
 	struct { int x, y; } lastmotion;
 	unsigned int modifiers;
 	Atom wm_delete_window;
+	struct zdl_clipboard_data clipboard;
 };
 
 #define MWM_HINTS_DECORATIONS   (1L << 1)
@@ -70,8 +73,15 @@ struct zdl_window {
 static Bool wait_for_map_notify(Display *d, XEvent *e, char *arg)
 {
 	if ((e->type == MapNotify) && (e->xmap.window == (Window)arg))
-		return GL_TRUE;
-	return GL_FALSE;
+		return True;
+	return False;
+}
+
+static Bool wait_for_selection_notify(Display *d, XEvent *e, char *arg)
+{
+	if (e->type == SelectionNotify)
+		return True;
+	return False;
 }
 
 static void zdl_window_set_wm_state(zdl_window_t w, zdl_flags_t flags)
@@ -285,6 +295,8 @@ void zdl_window_destroy(zdl_window_t w)
 	XDestroyWindow(w->display, w->window);
 	glXDestroyContext(w->display, w->context);
 	XCloseDisplay(w->display);
+	if (w->clipboard.text.text != NULL)
+		free((void *)w->clipboard.text.text);
 	free(w);
 }
 
@@ -346,7 +358,7 @@ void zdl_window_set_flags(zdl_window_t w, zdl_flags_t flags)
 		}
 	}
 
-	w->flags = flags;
+	w->flags = flags | ZDL_FLAG_COPYONHL;
 }
 
 zdl_flags_t zdl_window_get_flags(const zdl_window_t w)
@@ -592,6 +604,7 @@ static int zdl_window_translate(zdl_window_t w, int down, XKeyEvent *event, stru
 
 static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 {
+	XEvent resp;
 	XEvent event;
 	int rc;
 
@@ -606,19 +619,41 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 		break;
 	case KeyRelease:
 		ev->type = ZDL_EVENT_KEYRELEASE;
-		rc = zdl_window_translate(w, 0, &event.xkey, ev);
+		if (XEventsQueued(w->display, QueuedAfterReading)) {
+			XEvent nev;
+			XPeekEvent(w->display, &nev);
+			if (nev.type == KeyPress &&
+			    nev.xkey.time == event.xkey.time &&
+			    nev.xkey.keycode == event.xkey.keycode) {
+				rc = -1;
+				if (!(w->flags & ZDL_FLAG_KEYREPEAT))
+					XNextEvent(w->display, &nev);
+			}
+		}
+		if (rc != -1)
+			rc = zdl_window_translate(w, 0, &event.xkey, ev);
 		break;
 	case ButtonPress:
-		ev->type = ZDL_EVENT_BUTTONPRESS;
-		ev->button.x = event.xbutton.x;
-		ev->button.y = event.xbutton.y;
-		ev->button.button = event.xbutton.button;
+		if (w->flags & ZDL_FLAG_CLIPBOARD && event.xbutton.button == 2) {
+			ev->type = ZDL_EVENT_PASTE;
+			w->eatpaste = 1;
+		} else {
+			ev->type = ZDL_EVENT_BUTTONPRESS;
+			ev->button.x = event.xbutton.x;
+			ev->button.y = event.xbutton.y;
+			ev->button.button = event.xbutton.button;
+		}
 		break;
 	case ButtonRelease:
-		ev->type = ZDL_EVENT_BUTTONRELEASE;
-		ev->button.x = event.xbutton.x;
-		ev->button.y = event.xbutton.y;
-		ev->button.button = event.xbutton.button;
+		if (w->eatpaste && event.xbutton.button == 2) {
+			w->eatpaste = 0;
+			rc = -1;
+		} else {
+			ev->type = ZDL_EVENT_BUTTONRELEASE;
+			ev->button.x = event.xbutton.x;
+			ev->button.y = event.xbutton.y;
+			ev->button.button = event.xbutton.button;
+		}
 		break;
 	case MotionNotify:
 		ev->type = ZDL_EVENT_MOTION;
@@ -686,6 +721,30 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 			rc = -1;
 		}
 		break;
+	case SelectionRequest:
+		if (w->clipboard.text.text == NULL) {
+			resp.xselection.property = None;
+		} else if (event.xselectionrequest.target == XA_STRING) {
+			XChangeProperty(w->display,
+				event.xselectionrequest.requestor,
+				event.xselectionrequest.property,
+				XA_STRING, 8, PropModeReplace,
+				(unsigned char *)w->clipboard.text.text,
+				strlen(w->clipboard.text.text));
+			resp.xselection.property = event.xselectionrequest.property;
+		} else {
+			resp.xselection.property = None;
+		}
+		resp.xselection.type = SelectionNotify;
+		resp.xselection.display = event.xselectionrequest.display;
+		resp.xselection.requestor = event.xselectionrequest.requestor;
+		resp.xselection.selection = event.xselectionrequest.selection;
+		resp.xselection.target = event.xselectionrequest.target;
+		resp.xselection.time = event.xselectionrequest.time;
+		XSendEvent(w->display, event.xselectionrequest.requestor,
+				0, 0, &resp);
+		rc = -1;
+		break;
 	default:
 		rc = -1;
 		break;
@@ -696,15 +755,21 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 
 int zdl_window_poll_event(zdl_window_t w, struct zdl_event *ev)
 {
-	if (!XPending(w->display))
-		return -1;
-
-	return zdl_window_read_event(w, ev);
+	while (XPending(w->display)) {
+		if (zdl_window_read_event(w, ev) == 0)
+			return 0;
+	}
+	return -1;
 }
 
 void zdl_window_wait_event(zdl_window_t w, struct zdl_event *ev)
 {
 	while (zdl_window_read_event(w, ev) != 0);
+}
+
+void zdl_window_warp_mouse(zdl_window_t w, int x, int y)
+{
+	XWarpPointer(w->display, None, w->window, 0, 0, 0, 0, x, y);
 }
 
 void zdl_window_swap(zdl_window_t w)
@@ -724,4 +789,261 @@ void zdl_window_set_title(zdl_window_t w, const char *icon, const char *name)
 
 	XStoreName(w->display, w->window, name);
 	XSetIconName(w->display, w->window, icon);
+}
+
+struct zdl_clipboard {
+	zdl_window_t window;
+	void *data;
+};
+
+zdl_clipboard_t zdl_clipboard_open(zdl_window_t w)
+{
+	zdl_clipboard_t c;
+
+	c = (zdl_clipboard_t)calloc(1, sizeof(*c));
+	if (c == NULL)
+		return ZDL_CLIPBOARD_INVALID;
+
+	c->window = w;
+
+	return c;
+}
+
+void zdl_clipboard_close(zdl_clipboard_t c)
+{
+	if (c->data != NULL) {
+		free(c->data);
+		c->data = NULL;
+	}
+	free(c);
+}
+
+int zdl_clipboard_write(zdl_clipboard_t c, const struct zdl_clipboard_data *data)
+{
+	if (data->format != ZDL_CLIPBOARD_URI &&
+	    data->format != ZDL_CLIPBOARD_TEXT)
+		return -1;
+
+	if (c->window->clipboard.text.text != NULL)
+		free((void *)c->window->clipboard.text.text);
+
+	if (data->format == ZDL_CLIPBOARD_URI)
+		c->window->clipboard.text.text = strdup(data->uri.uri);
+	else if (data->format == ZDL_CLIPBOARD_TEXT)
+		c->window->clipboard.text.text = strdup(data->text.text);
+
+	XSetSelectionOwner(c->window->display, XA_PRIMARY,
+			c->window->window, CurrentTime);
+	return 0;
+}
+
+static unsigned long long zdl_time_ms(void)
+{
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	return (unsigned long long)tv.tv_sec*1000 + tv.tv_usec/1000;
+}
+
+static int zdl_read_property(zdl_window_t w, Atom property, void **data, int *count)
+{
+	Atom actual_type;
+	int actual_format;
+	unsigned long nitems;
+	unsigned long left;
+	unsigned char *ret = 0;
+	int read_bytes = 1024;
+	int rc;
+
+	do {
+		if (ret != 0)
+			XFree(ret);
+
+		rc = XGetWindowProperty(w->display, w->window,
+				property, 0, read_bytes, False,
+				AnyPropertyType,
+				&actual_type, &actual_format,
+				&nitems, &left, &ret);
+		if (rc != Success)
+			return -1;
+		read_bytes <<= 1;
+	} while (left != 0);
+
+	*count = nitems;
+	*data = (void *)ret;
+
+	return 0;
+}
+
+int zdl_clipboard_read(zdl_clipboard_t c, struct zdl_clipboard_data *data)
+{
+	Window owner;
+	XEvent event;
+	Atom board_atoms[] = {
+		XA_PRIMARY,
+		XA_SECONDARY,
+		XInternAtom(c->window->display, "CLIPBOARD", False),
+	};
+	Atom xa_targets = XInternAtom(c->window->display, "TARGETS", False);
+	Atom targets[] = {
+		/* text formats */
+		XInternAtom(c->window->display, "UTF8_STRING", False),
+		XInternAtom(c->window->display, "C_STRING", False),
+		XInternAtom(c->window->display, "text/unicode", False),
+		XA_STRING,
+		XInternAtom(c->window->display, "COMPOUND_TEXT", False),
+		XInternAtom(c->window->display, "TEXT", False),
+		/* image formats */
+		XA_PIXMAP,
+		//XA_BITMAP,
+		//XA_DRAWABLE,
+		//XA_WINDOW,
+	};
+
+	unsigned long long start;
+	void *pdata;
+	Atom board;
+	Atom type;
+	int count;
+	int i, j, rc;
+
+	if (c->data != NULL) {
+		free(c->data);
+		c->data = NULL;
+	}
+
+	for (i = 0; i < sizeof(board_atoms)/sizeof(board_atoms[0]); ++i) {
+		board = board_atoms[i];
+		owner = XGetSelectionOwner(c->window->display, board);
+		if (owner != None)
+			break;
+	}
+	if (owner == None)
+		return -1;
+
+	start = zdl_time_ms();
+	/* request possible conversion targets */
+	XConvertSelection(c->window->display,
+			board, xa_targets, board,
+			c->window->window, CurrentTime);
+
+	for (;;) {
+		count = 0;
+		pdata = NULL;
+		XFlush(c->window->display);
+
+		do {
+			rc = XCheckIfEvent(c->window->display, &event, wait_for_selection_notify, NULL);
+		} while (rc == False && zdl_time_ms() - start < 100);
+
+		if (rc == False)
+			return -1;
+
+		if (event.xselection.property == None)
+			return -1;
+
+		if (zdl_read_property(c->window, board, (void **)&pdata, &count))
+			return -1;
+
+		if (event.xselection.target != xa_targets)
+			break;
+
+		for (i = 0; i < sizeof(targets)/sizeof(targets[0]); ++i) {
+			for (j = 0; j < count; ++j) {
+				if (((Atom *)pdata)[j] == targets[i])
+					break;
+			}
+			if (j != count)
+				break;
+		}
+
+		XFree(pdata);
+		if (j == count)
+			return -1;
+
+		type = targets[i];
+		/* request actual data */
+		XConvertSelection(c->window->display,
+				board, type, board,
+				c->window->window, CurrentTime);
+	}
+
+	switch (type) {
+	case XA_PIXMAP: {
+		unsigned int d0;
+		unsigned int w, h;
+		XImage *image;
+		Window root;
+		int x, y;
+		int d1;
+
+		XGetGeometry(c->window->display, ((Pixmap *)pdata)[0],
+				&root, &d1, &d1, &w, &h,
+				&d0, &d0);
+		image = XGetImage(c->window->display, ((Pixmap *)pdata)[0], 0, 0,
+				w, h, AllPlanes, ZPixmap);
+		XFree(pdata);
+		data->format = ZDL_CLIPBOARD_IMAGE;
+		data->image.pixels = (unsigned int *)calloc(4, w * h);
+		if (data->image.pixels == NULL)
+			return -1;
+		data->image.width = w;
+		data->image.height = h;
+		for (i = y = 0; y < h; ++y) {
+			char *line = image->data + y * image->bytes_per_line;
+			for (x = 0; x < w; ++x) {
+				void *pin = line + (x * image->bits_per_pixel) / 8;
+				unsigned int *pixel = (unsigned int *)&data->image.pixels[i++];
+				unsigned int in;
+				switch (image->bits_per_pixel) {
+				case 32:
+				case 24:
+					in = (*(unsigned int *)pin) & 0x00ffffff;
+					*pixel = (0xff << 24) | in;
+					break;
+				case 16:
+					in = *(unsigned short *)pin;
+					*pixel = (0xff << 24) |
+						((in & 0xf100) << 8) |
+						((in & 0x03f0) << 6) |
+						 (in & 0x001f);
+					break;
+				case  8:
+					in = *(unsigned char *)pin;
+					*pixel = (0xff << 24) |
+						 (in << 16) |
+						 (in << 8) |
+						  in;
+					break;
+				default:
+					*pixel = 0;
+					break;
+				}
+				/* bgr -> rgb swap */
+				if (image->blue_mask > image->red_mask) {
+					unsigned int tmp = *pixel;
+					*pixel =  (tmp & (0xff << 24)) |
+						  (tmp & (0xff <<  8)) |
+						 ((tmp & (0xff << 16)) >> 16) |
+						 ((tmp & (0xff <<  0)) << 16);
+				}
+			}
+		}
+		XDestroyImage(image);
+		pdata = (void *)data->image.pixels;
+		} break;
+	case XA_BITMAP:
+	case XA_DRAWABLE:
+	case XA_WINDOW:
+		XFree(pdata);
+		return -1;
+	default:
+		data->format = ZDL_CLIPBOARD_TEXT;
+		data->text.text = strdup((char *)pdata);
+		XFree(pdata);
+		pdata = (void *)data->text.text;
+		break;
+	}
+
+	c->data = pdata;
+	return 0;
 }
