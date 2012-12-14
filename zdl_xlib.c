@@ -42,6 +42,7 @@
 struct zdl_window {
 	Display *display;
 	int mapped;
+	int eatpaste;
 	int screen;
 	int x, y;
 	int width, height;
@@ -635,6 +636,7 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 	case ButtonPress:
 		if (w->flags & ZDL_FLAG_CLIPBOARD && event.xbutton.button == 2) {
 			ev->type = ZDL_EVENT_PASTE;
+			w->eatpaste = 1;
 		} else {
 			ev->type = ZDL_EVENT_BUTTONPRESS;
 			ev->button.x = event.xbutton.x;
@@ -643,10 +645,15 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 		}
 		break;
 	case ButtonRelease:
-		ev->type = ZDL_EVENT_BUTTONRELEASE;
-		ev->button.x = event.xbutton.x;
-		ev->button.y = event.xbutton.y;
-		ev->button.button = event.xbutton.button;
+		if (w->eatpaste && event.xbutton.button == 2) {
+			w->eatpaste = 0;
+			rc = -1;
+		} else {
+			ev->type = ZDL_EVENT_BUTTONRELEASE;
+			ev->button.x = event.xbutton.x;
+			ev->button.y = event.xbutton.y;
+			ev->button.button = event.xbutton.button;
+		}
 		break;
 	case MotionNotify:
 		ev->type = ZDL_EVENT_MOTION;
@@ -748,10 +755,11 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 
 int zdl_window_poll_event(zdl_window_t w, struct zdl_event *ev)
 {
-	if (!XPending(w->display))
-		return -1;
-
-	return zdl_window_read_event(w, ev);
+	while (XPending(w->display)) {
+		if (zdl_window_read_event(w, ev) == 0)
+			return 0;
+	}
+	return -1;
 }
 
 void zdl_window_wait_event(zdl_window_t w, struct zdl_event *ev)
