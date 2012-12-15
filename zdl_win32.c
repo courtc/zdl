@@ -130,6 +130,9 @@ struct zdl_window {
 		int width, height;
 	} masked;
 
+	enum zdl_keysym eat[10];
+	int eatcount;
+
 	WNDCLASSEX wcex;
 	HWND  window;
 	DWORD style;
@@ -246,8 +249,10 @@ static int zdl_translate(zdl_window_t w, WPARAM wParam, LPARAM lParam, struct zd
 	case VK_NUMLOCK:      ev->key.sym = ZDL_KEYSYM_NUMLOCK; break;
 	case VK_CAPITAL:      ev->key.sym = ZDL_KEYSYM_CAPSLOCK; break;
 	case VK_SCROLL:       ev->key.sym = ZDL_KEYSYM_SCROLLLOCK; break;
+	case VK_SHIFT:        ev->key.sym = ZDL_KEYSYM_LSHIFT; break;
 	case VK_RSHIFT:       ev->key.sym = ZDL_KEYSYM_RSHIFT; break;
 	case VK_LSHIFT:       ev->key.sym = ZDL_KEYSYM_LSHIFT; break;
+	case VK_CONTROL:      ev->key.sym = ZDL_KEYSYM_LCTRL; break;
 	case VK_RCONTROL:     ev->key.sym = ZDL_KEYSYM_RCTRL; break;
 	case VK_LCONTROL:     ev->key.sym = ZDL_KEYSYM_LCTRL; break;
 	case VK_MENU:         ev->key.sym = ZDL_KEYSYM_RALT; break;
@@ -283,17 +288,6 @@ static int zdl_translate(zdl_window_t w, WPARAM wParam, LPARAM lParam, struct zd
 	ev->key.scancode = (lParam >> 16) & 0x7f;
 	ev->key.unicode = 0;
 	ev->key.modifiers = w->modifiers;
-
-	if (w->flags & ZDL_FLAG_CLIPBOARD && ev->type == ZDL_EVENT_KEYPRESS) {
-		if (ev->key.modifiers & ZDL_KEYMOD_CTRL) {
-			if (ev->key.sym == ZDL_KEYSYM_X)
-				ev->type = ZDL_EVENT_CUT;
-			else if (ev->key.sym == ZDL_KEYSYM_C)
-				ev->type = ZDL_EVENT_COPY;
-			else if (ev->key.sym == ZDL_KEYSYM_V)
-				ev->type = ZDL_EVENT_PASTE;
-		}
-	}
 
 	return 0;
 }
@@ -392,15 +386,15 @@ static LRESULT CALLBACK zdl_WndProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
 	case WM_KEYDOWN:
 		if (!(w->flags & ZDL_FLAG_KEYREPEAT) && (lParam & 0x40000000))
 			break;
+		ev.type = ZDL_EVENT_KEYPRESS;
 		if (zdl_translate(w, wParam, lParam, &ev))
 			break;
-		ev.type = ZDL_EVENT_KEYPRESS;
 		zdl_queue_push(&w->queue, &ev);
 		break;
 	case WM_KEYUP:
+		ev.type = ZDL_EVENT_KEYRELEASE;
 		if (zdl_translate(w, wParam, lParam, &ev))
 			break;
-		ev.type = ZDL_EVENT_KEYRELEASE;
 		zdl_queue_push(&w->queue, &ev);
 		break;
 	case WM_TOUCH:
@@ -714,11 +708,55 @@ void zdl_window_get_position(const zdl_window_t w, int *x, int *y)
 	if (y != NULL) *y = w->y;
 }
 
+static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
+{
+	int rc;
+
+	rc = zdl_queue_pop(&w->queue, ev);
+	if (rc)
+		return rc;
+
+	if (w->flags & ZDL_FLAG_CLIPBOARD && ev->type == ZDL_EVENT_KEYPRESS) {
+		if (ev->key.modifiers & ZDL_KEYMOD_CTRL) {
+			int eaten = 1;
+			switch (ev->key.sym) {
+			case ZDL_KEYSYM_X:
+				ev->type = ZDL_EVENT_CUT;
+				break;
+			case ZDL_KEYSYM_C:
+				ev->type = ZDL_EVENT_COPY;
+				break;
+			case ZDL_KEYSYM_V:
+				ev->type = ZDL_EVENT_PASTE;
+				break;
+			default:
+				eaten = 0;
+				break;
+			}
+
+			if (eaten)
+				w->eat[w->eatcount++] = ev->key.sym;
+		}
+	} else if (ev->type == ZDL_EVENT_KEYRELEASE) {
+		int i;
+		for (i = 0; i < w->eatcount; ++i) {
+			if (w->eat[i] == ev->key.sym) {
+				if (w->eatcount - i > 1)
+					memmove(&w->eat[i], &w->eat[i + 1],
+							sizeof(w->eat[0] * ((w->eatcount - i) - 1)));
+				w->eatcount--;
+				return -1;
+			}
+		}
+	}
+	return 0;
+}
+
 int zdl_window_poll_event(zdl_window_t w, struct zdl_event *ev)
 {
 	MSG msg;
 
-	if (zdl_queue_pop(&w->queue, ev) == 0)
+	if (zdl_window_read_event(w, ev) == 0)
 		return 0;
 
 	while (PeekMessage(&msg, w->window, 0, 0, PM_REMOVE) != 0) {
@@ -726,12 +764,12 @@ int zdl_window_poll_event(zdl_window_t w, struct zdl_event *ev)
 		DispatchMessage(&msg);
 	}
 
-	return zdl_queue_pop(&w->queue, ev);
+	return zdl_window_read_event(w, ev);
 }
 
 void zdl_window_wait_event(zdl_window_t w, struct zdl_event *ev)
 {
-	while (zdl_queue_pop(&w->queue, ev) != 0) {
+	while (zdl_window_read_event(w, ev) != 0) {
 		MSG msg;
 
 		if (GetMessage(&msg, w->window, 0, 0) > 0) {
@@ -744,8 +782,8 @@ void zdl_window_wait_event(zdl_window_t w, struct zdl_event *ev)
 void zdl_window_warp_mouse(zdl_window_t w, int x, int y)
 {
 	RECT rect = {
-			w->x, w->y,
-			w->width, w->height
+		w->x, w->y,
+		w->width, w->height
 	};
 
 	AdjustWindowRect(&rect, w->style, FALSE);
@@ -809,7 +847,7 @@ zdl_clipboard_t zdl_clipboard_open(zdl_window_t w)
 
 	c = (zdl_clipboard_t)calloc(1, sizeof(*c));
 	if (c == NULL)
-			return ZDL_CLIPBOARD_INVALID;
+		return ZDL_CLIPBOARD_INVALID;
 
 	return c;
 }
@@ -843,7 +881,7 @@ int zdl_clipboard_write(zdl_clipboard_t c, const struct zdl_clipboard_data *data
 
 	hglbCopy = GlobalAlloc(GMEM_MOVEABLE, (len + 1));
     if (hglbCopy == NULL)
-			return -1;
+		return -1;
 
 	EmptyClipboard();
 
