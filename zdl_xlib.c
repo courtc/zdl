@@ -581,8 +581,6 @@ static int zdl_window_translate(zdl_window_t w, int down, XKeyEvent *event, stru
 	}
 
 	if (drop) {
-		XEvent xevent;
-		xevent.xkey = *event;
 		XSendEvent(w->display, w->root, False,
 				KeyPressMask | KeyReleaseMask,
 				(XEvent *)event);
@@ -604,6 +602,13 @@ static int zdl_window_translate(zdl_window_t w, int down, XKeyEvent *event, stru
 
 static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 {
+	static const enum zdl_button button_map[] = {
+		[Button1] = ZDL_BUTTON_LEFT,
+		[Button2] = ZDL_BUTTON_MIDDLE,
+		[Button3] = ZDL_BUTTON_RIGHT,
+		[Button4] = ZDL_BUTTON_MWUP,
+		[Button5] = ZDL_BUTTON_MWDOWN,
+	};
 	XEvent resp;
 	XEvent event;
 	int rc;
@@ -641,7 +646,7 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 			ev->type = ZDL_EVENT_BUTTONPRESS;
 			ev->button.x = event.xbutton.x;
 			ev->button.y = event.xbutton.y;
-			ev->button.button = event.xbutton.button;
+			ev->button.button = button_map[event.xbutton.button];
 		}
 		break;
 	case ButtonRelease:
@@ -652,7 +657,7 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 			ev->type = ZDL_EVENT_BUTTONRELEASE;
 			ev->button.x = event.xbutton.x;
 			ev->button.y = event.xbutton.y;
-			ev->button.button = event.xbutton.button;
+			ev->button.button = button_map[event.xbutton.button];
 		}
 		break;
 	case MotionNotify:

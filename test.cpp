@@ -77,6 +77,25 @@ int main(int argc, char **argv)
 					break;
 				}
 				break;
+			case ZDL_EVENT_BUTTONPRESS:
+				switch (event.button.button) {
+				case ZDL_BUTTON_LEFT:
+					fprintf(stderr, "button left@(%d,%d)\n", event.button.x, event.button.y);
+					break;
+				case ZDL_BUTTON_RIGHT:
+					fprintf(stderr, "button right@(%d,%d)\n", event.button.x, event.button.y);
+					break;
+				case ZDL_BUTTON_MIDDLE:
+					fprintf(stderr, "button middle@(%d,%d)\n", event.button.x, event.button.y);
+					break;
+				case ZDL_BUTTON_MWDOWN:
+					fprintf(stderr, "button wheel-down@(%d,%d)\n", event.button.x, event.button.y);
+					break;
+				case ZDL_BUTTON_MWUP:
+					fprintf(stderr, "button wheel-up@(%d,%d)\n", event.button.x, event.button.y);
+					break;
+				}
+				break;
 			case ZDL_EVENT_MOTION:
 				//fprintf(stderr, "motion (%d,%d)\n", event.motion.d_x, event.motion.d_y);
 				break;
