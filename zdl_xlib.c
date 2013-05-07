@@ -646,6 +646,7 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 			ev->type = ZDL_EVENT_BUTTONPRESS;
 			ev->button.x = event.xbutton.x;
 			ev->button.y = event.xbutton.y;
+			ev->button.modifiers = w->modifiers;
 			ev->button.button = button_map[event.xbutton.button];
 		}
 		break;
@@ -657,6 +658,7 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 			ev->type = ZDL_EVENT_BUTTONRELEASE;
 			ev->button.x = event.xbutton.x;
 			ev->button.y = event.xbutton.y;
+			ev->button.modifiers = w->modifiers;
 			ev->button.button = button_map[event.xbutton.button];
 		}
 		break;

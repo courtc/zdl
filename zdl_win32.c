@@ -422,6 +422,7 @@ static LRESULT CALLBACK zdl_WndProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
 	case WM_LBUTTONDOWN:
 		ev.type = ZDL_EVENT_BUTTONPRESS;
 		ev.button.button = ZDL_BUTTON_LEFT;
+		ev.button.modifiers = w->modifiers;
 		ev.button.x = (lParam >>  0) & 0xffff;
 		ev.button.y = (lParam >> 16) & 0xffff;
 		zdl_queue_push(&w->queue, &ev);
@@ -429,6 +430,7 @@ static LRESULT CALLBACK zdl_WndProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
 	case WM_MBUTTONDOWN:
 		ev.type = ZDL_EVENT_BUTTONPRESS;
 		ev.button.button = ZDL_BUTTON_MIDDLE;
+		ev.button.modifiers = w->modifiers;
 		ev.button.x = (lParam >>  0) & 0xffff;
 		ev.button.y = (lParam >> 16) & 0xffff;
 		zdl_queue_push(&w->queue, &ev);
@@ -436,6 +438,7 @@ static LRESULT CALLBACK zdl_WndProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
 	case WM_RBUTTONDOWN:
 		ev.type = ZDL_EVENT_BUTTONPRESS;
 		ev.button.button = ZDL_BUTTON_RIGHT;
+		ev.button.modifiers = w->modifiers;
 		ev.button.x = (lParam >>  0) & 0xffff;
 		ev.button.y = (lParam >> 16) & 0xffff;
 		zdl_queue_push(&w->queue, &ev);
@@ -443,6 +446,7 @@ static LRESULT CALLBACK zdl_WndProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
 	case WM_RBUTTONUP:
 		ev.type = ZDL_EVENT_BUTTONRELEASE;
 		ev.button.button = ZDL_BUTTON_RIGHT;
+		ev.button.modifiers = w->modifiers;
 		ev.button.x = (lParam >>  0) & 0xffff;
 		ev.button.y = (lParam >> 16) & 0xffff;
 		zdl_queue_push(&w->queue, &ev);
@@ -450,6 +454,7 @@ static LRESULT CALLBACK zdl_WndProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
 	case WM_LBUTTONUP:
 		ev.type = ZDL_EVENT_BUTTONRELEASE;
 		ev.button.button = ZDL_BUTTON_LEFT;
+		ev.button.modifiers = w->modifiers;
 		ev.button.x = (lParam >>  0) & 0xffff;
 		ev.button.y = (lParam >> 16) & 0xffff;
 		zdl_queue_push(&w->queue, &ev);
@@ -457,6 +462,7 @@ static LRESULT CALLBACK zdl_WndProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
 	case WM_MBUTTONUP:
 		ev.type = ZDL_EVENT_BUTTONRELEASE;
 		ev.button.button = ZDL_BUTTON_MIDDLE;
+		ev.button.modifiers = w->modifiers;
 		ev.button.x = (lParam >>  0) & 0xffff;
 		ev.button.y = (lParam >> 16) & 0xffff;
 		zdl_queue_push(&w->queue, &ev);

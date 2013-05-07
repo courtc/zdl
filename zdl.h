@@ -305,6 +305,7 @@ struct zdl_event {
 		/** Button event */
 		struct {
 			enum zdl_button button;   /**< Button identifier */
+			zdl_keymod_t modifiers;   /**< Key modifier mask */
 			int x, y;                 /**< Event position */
 		} button;
 
