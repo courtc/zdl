@@ -172,6 +172,24 @@ static void zdl_window_set_hints(zdl_window_t w, int width, int height, zdl_flag
 	XFree(hints);
 }
 
+static int zdl_window_set_swap_interval(zdl_window_t w, int on)
+{
+	const char *ext = glXQueryExtensionsString(w->display, 0);
+	void (*swap)(int) = NULL;
+
+	if (strstr(ext, "GLX_SGI_swap_control") != NULL) {
+		swap = (void (*)(int))glXGetProcAddress((const GLubyte*)"glXSwapIntervalSGI");
+	} else if (strstr(ext, "GLX_MESA_swap_control") != NULL) {
+		swap = (void (*)(int))glXGetProcAddress((const GLubyte*)"glXSwapIntervalMESA");
+	}
+
+	if (swap) {
+		swap(on ? 1 : 0);
+		return 0;
+	}
+	return -1;
+}
+
 static int zdl_window_reconfigure(zdl_window_t w, int width, int height, zdl_flags_t flags)
 {
 	unsigned int valuelist[6];
@@ -183,7 +201,9 @@ static int zdl_window_reconfigure(zdl_window_t w, int width, int height, zdl_fla
 	valuelist[0] = GLX_RGBA;
 	valuelist[1] = GLX_DOUBLEBUFFER;
 	valuelist[2] = GLX_USE_GL;
-	valuelist[3] = None;
+	valuelist[3] = GLX_DEPTH_SIZE;
+	valuelist[4] = 8;
+	valuelist[5] = None;
 
 	vi = glXChooseVisual(w->display, w->screen, (int *)valuelist);
 	if (vi == NULL) {
@@ -233,6 +253,7 @@ static int zdl_window_reconfigure(zdl_window_t w, int width, int height, zdl_fla
 		glXDestroyContext(w->display, w->context);
 		return -1;
 	}
+	zdl_window_set_swap_interval(w, 0);
 
 	XMapWindow(w->display, w->window);
 	XSetWMProtocols(w->display, w->window, &w->wm_delete_window, 1);
