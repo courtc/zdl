@@ -237,15 +237,19 @@ enum zdl_keysym {
 
 /** Motion identifier */
 enum zdl_motion_id {
-	ZDL_MOTION_POINTER,           /**< Classic pointer device */
+	ZDL_MOTION_POINTER,            /**< Classic pointer device */
 
-	ZDL_MOTION_TOUCH_START = 1,   /**< Touch finger #0 */
+	ZDL_MOTION_TOUCH_START  = 1,   /**< Touch finger #0 */
 	/* ZDL_MOTION_TOUCH_FINGER<n> */
-	ZDL_MOTION_TOUCH_END   = 255, /**< Touch finger #255 */
+	ZDL_MOTION_TOUCH_END    = 256, /**< Touch finger #255 */
 
-	ZDL_MOTION_HOVER_START = 256, /**< Hover finger #0 */
+	ZDL_MOTION_HOVER_START  = 257, /**< Hover finger #0 */
 	/* ZDL_MOTION_HOVER_FINGER<n> */
-	ZDL_MOTION_HOVER_END   = 511, /**< Hover finger #255 */
+	ZDL_MOTION_HOVER_END    = 512, /**< Hover finger #255 */
+
+	ZDL_MOTION_ANALOG_START = 512, /**< Analog #0 */
+	/* ZDL_MOTION_ANALOG<n> */
+	ZDL_MOTION_ANALOG_END   = 768, /**< Analog #255 */
 };
 
 /** Motion flags */
@@ -253,9 +257,21 @@ enum zdl_motion_flag_enum {
 	ZDL_MOTION_FLAG_NONE    = 0,        /**< Normal motion event */
 	ZDL_MOTION_FLAG_INITIAL = (1 << 0), /**< Initial motion for id (eg finger down) */
 	ZDL_MOTION_FLAG_FINAL   = (1 << 1), /**< Final motion for id (eg finger up) */
+	ZDL_MOTION_FLAG_Z       = (1 << 2), /**< Motion contains Z-axis */
+	ZDL_MOTION_FLAG_ROT     = (1 << 3), /**< Motion represents rotation */
 };
 /** Motion flag bitmask */
 typedef unsigned int zdl_motion_flags_t;
+
+/** Range of analog motion */
+enum zdl_analog_range_enum {
+	ZDL_ANALOG_LINEAR_MIN    = -65536,  /**< Minimum linear value */
+	ZDL_ANALOG_LINEAR_MAX    =  65536,  /**< Maximum linear value */
+	ZDL_ANALOG_LINEAR_RANGE  =  131073, /**< Range of linear motion */
+	ZDL_ANALOG_ANGULAR_MIN   =  0,      /**< Minimum angular value (0 deg) */
+	ZDL_ANALOG_ANGULAR_MAX   =  131071, /**< Maximum linear value (359.997 deg) */
+	ZDL_ANALOG_ANGULAR_RANGE =  131072, /**< Range of angular motion */
+};
 
 /** Button identifier */
 enum zdl_button {
@@ -264,6 +280,65 @@ enum zdl_button {
 	ZDL_BUTTON_MIDDLE = 3, /**< Middle */
 	ZDL_BUTTON_MWDOWN = 4, /**< Mouse-wheel down */
 	ZDL_BUTTON_MWUP   = 5, /**< Mouse-wheel up */
+	ZDL_BUTTON_HLEFT  = 6, /**< Horizontal scroll-left */
+	ZDL_BUTTON_HRIGHT = 7, /**< Horizontal scroll-right */
+	ZDL_BUTTON_BACK   = 8, /**< Back button */
+	ZDL_BUTTON_FORWD  = 9, /**< Forward button */
+
+	ZDL_BUTTON_JOY_A   = 0x100, /**< Joystick A button */
+	ZDL_BUTTON_JOY_B   = 0x101, /**< Joystick B button */
+	ZDL_BUTTON_JOY_C   = 0x102, /**< Joystick C button */
+	ZDL_BUTTON_JOY_X   = 0x103, /**< Joystick X button */
+	ZDL_BUTTON_JOY_Y   = 0x104, /**< Joystick Y button */
+	ZDL_BUTTON_JOY_Z   = 0x105, /**< Joystick Z button */
+	ZDL_BUTTON_JOY_SEL = 0x106, /**< Joystick select button */
+	ZDL_BUTTON_JOY_STA = 0x107, /**< Joystick start button */
+	ZDL_BUTTON_JOY_LT  = 0x108, /**< Joystick LT button */
+	ZDL_BUTTON_JOY_RT  = 0x109, /**< Joystick RT button */
+	ZDL_BUTTON_JOY_LB  = 0x10a, /**< Joystick LB button */
+	ZDL_BUTTON_JOY_RB  = 0x10b, /**< Joystick RB button */
+	ZDL_BUTTON_JOY_MOD = 0x10c, /**< Joystick mode button */
+	ZDL_BUTTON_JOY_TGR = 0x10d, /**< Joystick trigger button */
+	ZDL_BUTTON_JOY_TB0 = 0x10e, /**< Joystick thumb #0 button */
+	ZDL_BUTTON_JOY_TB1 = 0x10f, /**< Joystick thumb #1 button */
+	ZDL_BUTTON_JOY_TP0 = 0x110, /**< Joystick top #0 button */
+	ZDL_BUTTON_JOY_TP1 = 0x111, /**< Joystick top #1 button */
+	ZDL_BUTTON_JOY_PKY = 0x112, /**< Joystick pinky button */
+	ZDL_BUTTON_JOY_B0  = 0x113, /**< Joystick base #0 button */
+	ZDL_BUTTON_JOY_B1  = 0x114, /**< Joystick base #1 button */
+	ZDL_BUTTON_JOY_B2  = 0x115, /**< Joystick base #2 button */
+	ZDL_BUTTON_JOY_B3  = 0x116, /**< Joystick base #3 button */
+	ZDL_BUTTON_JOY_B4  = 0x117, /**< Joystick base #4 button */
+	ZDL_BUTTON_JOY_B5  = 0x118, /**< Joystick base #5 button */
+	ZDL_BUTTON_JOY_B6  = 0x119, /**< Joystick base #6 button */
+	ZDL_BUTTON_JOY_DED = 0x11a, /**< Joystick dead button */
+	ZDL_BUTTON_JOY_GD  = 0x11b, /**< Joystick gear-down button */
+	ZDL_BUTTON_JOY_GU  = 0x11c, /**< Joystick gear-up button */
+	ZDL_BUTTON_JOY_VR1 = 0x1fe, /**< Joystick vendor button #1 */
+	ZDL_BUTTON_JOY_VR2 = 0x1ff, /**< Joystick vendor button #2 */
+
+	ZDL_BUTTON_DPAD_CNTR  = 0x200, /**< D-Pad center */
+	ZDL_BUTTON_DPAD_LEFT  = 0x201, /**< D-Pad left */
+	ZDL_BUTTON_DPAD_RIGHT = 0x202, /**< D-Pad right */
+	ZDL_BUTTON_DPAD_UP    = 0x203, /**< D-Pad up */
+	ZDL_BUTTON_DPAD_DOWN  = 0x204, /**< D-Pad down */
+};
+
+/** Event source */
+enum zdl_event_source {
+	ZDL_EVENT_SOURCE_SYSTEM         = 0,  /**< System-generated event */
+
+	ZDL_EVENT_SOURCE_POINTER_START  = 1,  /**< Pointer device  #0 */
+	/* ZDL_EVENT_SOURCE_POINTER<n> */
+	ZDL_EVENT_SOURCE_POINTER_END    = 32, /**< Pointer device  #31 */
+
+	ZDL_EVENT_SOURCE_KEYBOARD_START = 33, /**< Keyboard device #0 */
+	/* ZDL_EVENT_SOURCE_KEYBOARD<n> */
+	ZDL_EVENT_SOURCE_KEYBOARD_END   = 64, /**< Keyboard device #31 */
+
+	ZDL_EVENT_SOURCE_JOYSICK_START  = 65, /**< Joystick device #0 */
+	/* ZDL_EVENT_SOURCE_JOYSTICK<n> */
+	ZDL_EVENT_SOURCE_JOYSICK_END    = 96, /**< Joystick device #31 */
 };
 
 /** Event type */
@@ -291,7 +366,8 @@ enum zdl_event_type {
 
 /** Event */
 struct zdl_event {
-	enum zdl_event_type type; /**< Event type */
+	enum zdl_event_type type;  /**< Event type */
+	enum zdl_event_source src; /**< Event source */
 
 	union {
 		/** Key event */
@@ -312,8 +388,8 @@ struct zdl_event {
 		/** Motion event */
 		struct {
 			enum zdl_motion_id id;    /**< Motion identifier */
-			int x, y;                 /**< Event position */
-			int d_x, d_y;             /**< Delta position */
+			int x, y, z;              /**< Event position */
+			int d_x, d_y, d_z;        /**< Delta position */
 			zdl_motion_flags_t flags; /**< Flags */
 		} motion;
 

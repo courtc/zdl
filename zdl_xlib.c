@@ -621,6 +621,11 @@ static int zdl_window_translate(zdl_window_t w, int down, XKeyEvent *event, stru
 	return 0;
 }
 
+#define Button6 6
+#define Button7 7
+#define Button8 8
+#define Button9 9
+
 static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 {
 	static const enum zdl_button button_map[] = {
@@ -629,6 +634,10 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 		[Button3] = ZDL_BUTTON_RIGHT,
 		[Button4] = ZDL_BUTTON_MWUP,
 		[Button5] = ZDL_BUTTON_MWDOWN,
+		[Button6] = ZDL_BUTTON_HLEFT,
+		[Button7] = ZDL_BUTTON_HRIGHT,
+		[Button8] = ZDL_BUTTON_BACK,
+		[Button9] = ZDL_BUTTON_FORWD,
 	};
 	XEvent resp;
 	XEvent event;
@@ -641,10 +650,12 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 	switch (event.type) {
 	case KeyPress:
 		ev->type = ZDL_EVENT_KEYPRESS;
+		ev->src = ZDL_EVENT_SOURCE_KEYBOARD_START;
 		rc = zdl_window_translate(w, 1, &event.xkey, ev);
 		break;
 	case KeyRelease:
 		ev->type = ZDL_EVENT_KEYRELEASE;
+		ev->src = ZDL_EVENT_SOURCE_KEYBOARD_START;
 		if (XEventsQueued(w->display, QueuedAfterReading)) {
 			XEvent nev;
 			XPeekEvent(w->display, &nev);
@@ -661,10 +672,12 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 		break;
 	case ButtonPress:
 		if (w->flags & ZDL_FLAG_CLIPBOARD && event.xbutton.button == 2) {
+			ev->src = ZDL_EVENT_SOURCE_SYSTEM;
 			ev->type = ZDL_EVENT_PASTE;
 			w->eatpaste = 1;
 		} else {
 			ev->type = ZDL_EVENT_BUTTONPRESS;
+			ev->src = ZDL_EVENT_SOURCE_POINTER_START;
 			ev->button.x = event.xbutton.x;
 			ev->button.y = event.xbutton.y;
 			ev->button.modifiers = w->modifiers;
@@ -677,6 +690,7 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 			rc = -1;
 		} else {
 			ev->type = ZDL_EVENT_BUTTONRELEASE;
+			ev->src = ZDL_EVENT_SOURCE_POINTER_START;
 			ev->button.x = event.xbutton.x;
 			ev->button.y = event.xbutton.y;
 			ev->button.modifiers = w->modifiers;
@@ -685,6 +699,7 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 		break;
 	case MotionNotify:
 		ev->type = ZDL_EVENT_MOTION;
+		ev->src = ZDL_EVENT_SOURCE_POINTER_START;
 		ev->motion.x = event.xmotion.x;
 		ev->motion.y = event.xmotion.y;
 		ev->motion.d_x = (ev->motion.x - w->lastmotion.x);
@@ -694,11 +709,13 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 		break;
 	case EnterNotify:
 		ev->type = ZDL_EVENT_GAINFOCUS;
+		ev->src = ZDL_EVENT_SOURCE_SYSTEM;
 		w->lastmotion.x = event.xcrossing.x;
 		w->lastmotion.y = event.xcrossing.y;
 		break;
 	case LeaveNotify:
 		ev->type = ZDL_EVENT_LOSEFOCUS;
+		ev->src = ZDL_EVENT_SOURCE_SYSTEM;
 		break;
 	case ConfigureNotify:
 		if (event.xconfigure.window != w->window) {
@@ -731,6 +748,7 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 		w->lastconfig.y = event.xconfigure.y;
 
 		ev->type = ZDL_EVENT_RECONFIGURE;
+		ev->src = ZDL_EVENT_SOURCE_SYSTEM;
 		ev->reconfigure.width =  event.xconfigure.width;
 		ev->reconfigure.height = event.xconfigure.height;
 		rc = -((ev->reconfigure.width  == w->width) &&
@@ -740,10 +758,12 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 		break;
 	case Expose:
 		ev->type = ZDL_EVENT_EXPOSE;
+		ev->src = ZDL_EVENT_SOURCE_SYSTEM;
 		break;
 	case ClientMessage:
 		if (event.xclient.data.l[0] == w->wm_delete_window) {
 			ev->type = ZDL_EVENT_EXIT;
+			ev->src = ZDL_EVENT_SOURCE_SYSTEM;
 			break;
 		} else {
 			rc = -1;
