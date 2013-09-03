@@ -604,6 +604,13 @@ void zdl_window_set_title(zdl_window_t w, const char *icon, const char *name)
 	(*env)->DeleteLocalRef(env, oWindow);
 }
 
+union zdl_native_handle zdl_window_native_handle(zdl_window_t w)
+{
+	union zdl_native_handle ret;
+	ret.ptr = g_zdl_app->internal.activity;
+	return ret;
+}
+
 static const struct {
 	zdl_flags_t flag;
 	unsigned int wflag;

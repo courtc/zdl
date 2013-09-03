@@ -816,6 +816,16 @@ void zdl_window_set_title(zdl_window_t w, const char *icon, const char *name)
 	SetWindowText(w->window, name);
 }
 
+union zdl_native_handle zdl_window_native_handle(zdl_window_t w)
+{
+	union zdl_native_handle ret;
+	if (sizeof(w->window) == sizeof(unsigned int))
+		ret.u32 = (unsigned int)w->window;
+	else
+		ret.u64 = (unsigned long long)w->window;
+	return ret;
+}
+
 int zdl_win32_entry(int (* main)(int, char **))
 {
 	char *argv[256];

@@ -456,6 +456,21 @@ ZDL_EXPORT void zdl_window_warp_mouse(zdl_window_t w, int x, int y);
  */
 ZDL_EXPORT void zdl_window_swap(zdl_window_t w);
 
+/** Native window handle. */
+union zdl_native_handle {
+	void *ptr;
+	signed int s32;
+	unsigned int u32;
+	signed long long s64;
+	unsigned long long u64;
+};
+
+/** Get native window handle.
+ * @param w Window handle.
+ * @return Native window handle.
+ */
+ZDL_EXPORT union zdl_native_handle zdl_window_native_handle(zdl_window_t w);
+
 /** Clipboard handle. */
 typedef struct zdl_clipboard *zdl_clipboard_t;
 
@@ -582,6 +597,9 @@ public:
 
 	void swap(void)
 	{ zdl_window_swap(m_win); }
+
+	union zdl_native_handle getNativeHandle(void)
+	{ return zdl_window_native_handle(m_win); }
 
 	Clipboard *getClipboard(void)
 	{

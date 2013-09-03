@@ -819,6 +819,16 @@ void zdl_window_set_title(zdl_window_t w, const char *icon, const char *name)
 	XSetIconName(w->display, w->window, icon);
 }
 
+union zdl_native_handle zdl_window_native_handle(zdl_window_t w)
+{
+	union zdl_native_handle ret;
+	if (sizeof(w->window) == sizeof(unsigned int))
+		ret.u32 = (unsigned int)w->window;
+	else
+		ret.u64 = (unsigned long long)w->window;
+	return ret;
+}
+
 struct zdl_clipboard {
 	zdl_window_t window;
 	void *data;
