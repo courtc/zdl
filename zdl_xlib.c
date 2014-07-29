@@ -756,6 +756,8 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 		break;
 	case MotionNotify:
 		ev->type = ZDL_EVENT_MOTION;
+		ev->motion.id = ZDL_MOTION_POINTER;
+		ev->motion.flags = ZDL_MOTION_FLAG_NONE;
 		ev->motion.x = event.xmotion.x;
 		ev->motion.y = event.xmotion.y;
 		ev->motion.d_x = (ev->motion.x - w->lastmotion.x);
