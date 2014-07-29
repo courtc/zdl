@@ -63,6 +63,7 @@ struct zdl_window {
 
 	struct { int x, y; } lastmotion;
 	unsigned int modifiers;
+	unsigned int modifiers_to;
 	Atom wm_delete_window;
 	struct zdl_clipboard_data clipboard;
 };
@@ -230,7 +231,7 @@ static int zdl_window_reconfigure(zdl_window_t w, int width, int height, zdl_fla
 				ButtonPressMask     | ButtonReleaseMask |
 				EnterWindowMask     | LeaveWindowMask   |
 				PointerMotionMask   | ExposureMask      |
-				StructureNotifyMask;
+				StructureNotifyMask | FocusChangeMask;
 	valuemask =	CWBackPixel |
 			CWBorderPixel |
 			CWOverrideRedirect |
@@ -286,6 +287,7 @@ zdl_window_t zdl_window_create(int width, int height, zdl_flags_t flags)
 	w->width = width;
 	w->height = height;
 	w->flags = flags & ~ZDL_FLAG_NOCURSOR;
+
 
 	w->wm_delete_window = XInternAtom(w->display, "WM_DELETE_WINDOW", False);
 
@@ -431,37 +433,104 @@ void zdl_window_get_position(const zdl_window_t w, int *x, int *y)
 	if (y != NULL) *y = w->y;
 }
 
+static enum zdl_keymod_enum zdl_window_keymod(KeySym ks)
+{
+	switch (ks) {
+	case XK_Shift_L:     return ZDL_KEYMOD_LSHIFT;
+	case XK_Shift_R:     return ZDL_KEYMOD_RSHIFT;
+	case XK_Control_L:   return ZDL_KEYMOD_LCTRL;
+	case XK_Control_R:   return ZDL_KEYMOD_RCTRL;
+	case XK_Alt_L:       return ZDL_KEYMOD_LALT;
+	case XK_Alt_R:       return ZDL_KEYMOD_RALT;
+	case XK_Super_L:     return ZDL_KEYMOD_LSUPER;
+	case XK_Super_R:     return ZDL_KEYMOD_RSUPER;
+	case XK_Hyper_L:     return ZDL_KEYMOD_LHYPER;
+	case XK_Hyper_R:     return ZDL_KEYMOD_RHYPER;
+	case XK_Meta_L:      return ZDL_KEYMOD_LMETA;
+	case XK_Meta_R:      return ZDL_KEYMOD_RMETA;
+	case XK_Num_Lock:    return ZDL_KEYMOD_NUM;
+	case XK_Caps_Lock:   return ZDL_KEYMOD_CAPS;
+	case XK_Scroll_Lock: return ZDL_KEYMOD_SCROLL;
+	case XK_Mode_switch: return ZDL_KEYMOD_MODE;
+	}
+	return ZDL_KEYMOD_NONE;
+}
+
+static enum zdl_keysym zdl_window_keysym(enum zdl_keymod_enum km)
+{
+	switch (km) {
+	case ZDL_KEYMOD_LSHIFT:	return ZDL_KEYSYM_LSHIFT;
+	case ZDL_KEYMOD_RSHIFT:	return ZDL_KEYSYM_RSHIFT;
+	case ZDL_KEYMOD_LCTRL:	return ZDL_KEYSYM_LCTRL;
+	case ZDL_KEYMOD_RCTRL:	return ZDL_KEYSYM_RCTRL;
+	case ZDL_KEYMOD_LALT:	return ZDL_KEYSYM_LALT;
+	case ZDL_KEYMOD_RALT:	return ZDL_KEYSYM_RALT;
+	case ZDL_KEYMOD_LSUPER:	return ZDL_KEYSYM_LSUPER;
+	case ZDL_KEYMOD_RSUPER:	return ZDL_KEYSYM_RSUPER;
+	case ZDL_KEYMOD_LMETA:	return ZDL_KEYSYM_LMETA;
+	case ZDL_KEYMOD_RMETA:	return ZDL_KEYSYM_RMETA;
+	case ZDL_KEYMOD_NUM:	return ZDL_KEYSYM_NUMLOCK;
+	case ZDL_KEYMOD_CAPS:	return ZDL_KEYSYM_CAPSLOCK;
+	case ZDL_KEYMOD_SCROLL:	return ZDL_KEYSYM_SCROLLLOCK;
+	case ZDL_KEYMOD_MODE:	return ZDL_KEYSYM_MODE;
+	default: break;
+	}
+
+	return (enum zdl_keysym)-1;
+}
+
+static void zdl_window_update_modifiers(zdl_window_t w)
+{
+	XModifierKeymap *map;
+	char keys[32];
+	XKeyEvent ev;
+	KeyCode kc;
+	KeySym ks;
+	int i;
+
+	map = XGetModifierMapping(w->display);
+	if (map == NULL)
+		return;
+
+	memset(&ev, 0, sizeof(ev));
+	ev.type = KeyPress;
+	ev.display = w->display;
+	XQueryKeymap(w->display, keys);
+	w->modifiers_to = w->modifiers;
+	for (i = 0; i < 8 * map->max_keypermod; ++i) {
+		enum zdl_keymod_enum km;
+		int down;
+
+		if (!(kc = map->modifiermap[i]))
+			continue;
+		down = (keys[kc >> 3] & (1 << (kc & 7)));
+		ev.keycode = kc;
+		XLookupString(&ev, NULL, 0, &ks, NULL);
+		if (!(km = zdl_window_keymod(ks)))
+			continue;
+		if (down)
+			w->modifiers_to |= km;
+		else
+			w->modifiers_to &= ~km;
+	}
+	XFreeModifiermap(map);
+}
+
+
 static int zdl_window_translate(zdl_window_t w, int down, XKeyEvent *event, struct zdl_event *ev)
 {
-	unsigned int nmod = ZDL_KEYMOD_NONE;
+	unsigned int nmod;
 	int drop = 0;
 	KeySym ks;
 
 	XLookupString(event, NULL, 0, &ks, NULL);
 
-	switch (ks) {
-	case XK_Shift_L:     nmod |= ZDL_KEYMOD_LSHIFT; break;
-	case XK_Shift_R:     nmod |= ZDL_KEYMOD_RSHIFT; break;
-	case XK_Control_L:   nmod |= ZDL_KEYMOD_LCTRL; break;
-	case XK_Control_R:   nmod |= ZDL_KEYMOD_RCTRL; break;
-	case XK_Alt_L:       nmod |= ZDL_KEYMOD_LALT; break;
-	case XK_Alt_R:       nmod |= ZDL_KEYMOD_RALT; break;
-	case XK_Super_L:     nmod |= ZDL_KEYMOD_LSUPER; break;
-	case XK_Super_R:     nmod |= ZDL_KEYMOD_RSUPER; break;
-	case XK_Hyper_L:     nmod |= ZDL_KEYMOD_LHYPER; break;
-	case XK_Hyper_R:     nmod |= ZDL_KEYMOD_RHYPER; break;
-	case XK_Meta_L:      nmod |= ZDL_KEYMOD_LMETA; break;
-	case XK_Meta_R:      nmod |= ZDL_KEYMOD_RMETA; break;
-	case XK_Num_Lock:    nmod |= ZDL_KEYMOD_NUM; break;
-	case XK_Caps_Lock:   nmod |= ZDL_KEYMOD_CAPS; break;
-	case XK_Scroll_Lock: nmod |= ZDL_KEYMOD_SCROLL; break;
-	case XK_Mode_switch: nmod |= ZDL_KEYMOD_MODE; break;
-	}
-
+	nmod = zdl_window_keymod(ks);
 	if (down)
 		w->modifiers |= nmod;
 	else
 		w->modifiers &= ~nmod;
+	w->modifiers_to = w->modifiers;
 
 	switch (ks) {
 	case XK_BackSpace:    ev->key.sym = ZDL_KEYSYM_BACKSPACE; break;
@@ -694,6 +763,10 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 		w->lastmotion.x = ev->motion.x;
 		w->lastmotion.y = ev->motion.y;
 		break;
+	case FocusIn:
+		zdl_window_update_modifiers(w);
+		rc = -1;
+		break;
 	case EnterNotify:
 		ev->type = ZDL_EVENT_GAINFOCUS;
 		w->lastmotion.x = event.xcrossing.x;
@@ -787,8 +860,47 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 	return rc;
 }
 
+static int zdl_window_pop_modifiers(zdl_window_t w, struct zdl_event *ev)
+{
+	unsigned int chg;
+	int i;
+
+	if (w->modifiers == w->modifiers_to)
+		return -1;
+
+	chg = w->modifiers ^ w->modifiers_to;
+
+	for (i = 0; i < sizeof(w->modifiers) * 8; ++i) {
+		if (!(chg & (1 << i)))
+			continue;
+		if (w->modifiers_to & (1 << i)) {
+			w->modifiers |= (1 << i);
+			ev->type = ZDL_EVENT_KEYPRESS;
+		} else {
+			w->modifiers &= ~(1 << i);
+			ev->type = ZDL_EVENT_KEYRELEASE;
+		}
+		ev->key.sym = zdl_window_keysym(1 << i);
+		if (ev->key.sym != (enum zdl_keysym)-1) {
+			ev->key.scancode = 0;
+			ev->key.unicode = 0;
+			ev->key.modifiers = w->modifiers;
+			return 0;
+		}
+	}
+	return -1;
+}
+
+
+static int zdl_window_pending_event(zdl_window_t w, struct zdl_event *ev)
+{
+	return zdl_window_pop_modifiers(w, ev);
+}
+
 int zdl_window_poll_event(zdl_window_t w, struct zdl_event *ev)
 {
+	if (zdl_window_pending_event(w, ev) == 0)
+		return 0;
 	while (XPending(w->display)) {
 		if (zdl_window_read_event(w, ev) == 0)
 			return 0;
@@ -798,6 +910,8 @@ int zdl_window_poll_event(zdl_window_t w, struct zdl_event *ev)
 
 void zdl_window_wait_event(zdl_window_t w, struct zdl_event *ev)
 {
+	if (zdl_window_pending_event(w, ev) == 0)
+		return;
 	while (zdl_window_read_event(w, ev) != 0);
 }
 
