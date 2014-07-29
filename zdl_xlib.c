@@ -1062,7 +1062,7 @@ int zdl_clipboard_read(zdl_clipboard_t c, struct zdl_clipboard_data *data)
 	unsigned long long start;
 	void *pdata;
 	Atom board;
-	Atom type;
+	Atom type = 0;
 	int count;
 	int i, j, rc;
 
