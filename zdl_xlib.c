@@ -43,6 +43,7 @@ struct zdl_window {
 	Display *display;
 	int mapped;
 	int eatpaste;
+	int eatconfig;
 	int screen;
 	int x, y;
 	int width, height;
@@ -347,6 +348,7 @@ void zdl_window_set_flags(zdl_window_t w, zdl_flags_t flags)
 
 		zdl_window_set_hints(w, width, height, flags);
 		XMoveResizeWindow(w->display, w->window, x, y, width, height);
+		w->eatconfig = 2;
 		w->width = width;
 		w->height = height;
 	}
@@ -714,6 +716,12 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 			break;
 		}
 
+		if (w->eatconfig) {
+			w->eatconfig--;
+			rc = -1;
+			break;
+		}
+
 		if ((event.xconfigure.x != w->lastconfig.x) ||
 		    (event.xconfigure.y != w->lastconfig.y)) {
 			if (event.xconfigure.send_event == False) {
@@ -733,8 +741,6 @@ static int zdl_window_read_event(zdl_window_t w, struct zdl_event *ev)
 		ev->type = ZDL_EVENT_RECONFIGURE;
 		ev->reconfigure.width =  event.xconfigure.width;
 		ev->reconfigure.height = event.xconfigure.height;
-		rc = -((ev->reconfigure.width  == w->width) &&
-			       (ev->reconfigure.height == w->height));
 		w->width = ev->reconfigure.width;
 		w->height = ev->reconfigure.height;
 		break;
