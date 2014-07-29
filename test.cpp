@@ -28,10 +28,16 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#define delay(x) Sleep(x/1000)
+#define time_ms GetTickCount64
 #else
-#include <unistd.h>
-#define delay(x) usleep(x)
+#include <stdlib.h>
+#include <sys/time.h>
+unsigned long long time_ms(void)
+{
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	return (unsigned long long)tv.tv_sec*1000 + tv.tv_usec/1000;
+}
 #endif
 
 #include <GL/gl.h>
@@ -39,12 +45,42 @@
 
 #include "zdl.h"
 
+class FPSTracker {
+public:
+	FPSTracker(void)
+	 : mFrame(0)
+	{
+		mLastTime = time_ms();
+	}
+
+	bool update(unsigned int delta, int &fps)
+	{
+		unsigned long long now = time_ms();
+
+		mFrame++;
+		if (now - mLastTime < delta)
+			return false;
+
+		fps = mFrame * 1000. / (now - mLastTime) + .5;
+		mFrame = 0;
+		mLastTime = now;
+
+		return true;
+	}
+
+private:
+	unsigned long long mLastTime;
+	unsigned int mFrame;
+};
+
 int main(int argc, char **argv)
 {
 	zdl_flags_t flags = ZDL_FLAG_NONE;
 	ZDL::Window *window = new ZDL::Window(320, 240, flags);
+	FPSTracker tracker;
 	int done = 0;
 	int w, h;
+	int fps;
 
 	window->setTitle(argv[0]);
 	window->getSize(&w, &h);
@@ -61,16 +97,19 @@ int main(int argc, char **argv)
 				switch (event.key.sym) {
 				case ZDL_KEYSYM_R:
 					flags ^= ZDL_FLAG_NORESIZE;
+					fprintf(stderr, "\rresize: %sabled\n", (flags & ZDL_FLAG_NORESIZE) ? "dis" : "en");
 					window->setFlags(flags);
 					break;
 				case ZDL_KEYSYM_F:
 					flags ^= (ZDL_FLAG_FULLSCREEN | ZDL_FLAG_NOCURSOR);
+					fprintf(stderr, "\rfullscreen: %sabled\n", (flags & ZDL_FLAG_FULLSCREEN) ? "en" : "dis");
 					window->setFlags(flags);
 					window->getSize(&w, &h);
 					glViewport(0, 0, w, h);
 					break;
 				case ZDL_KEYSYM_ESCAPE:
 				case ZDL_KEYSYM_Q:
+					fprintf(stderr, "\rexiting");
 					done = 1;
 					break;
 				default:
@@ -80,24 +119,24 @@ int main(int argc, char **argv)
 			case ZDL_EVENT_BUTTONPRESS:
 				switch (event.button.button) {
 				case ZDL_BUTTON_LEFT:
-					fprintf(stderr, "button left@(%d,%d)\n", event.button.x, event.button.y);
+					fprintf(stderr, "\rbutton left@(%d,%d)\n", event.button.x, event.button.y);
 					break;
 				case ZDL_BUTTON_RIGHT:
-					fprintf(stderr, "button right@(%d,%d)\n", event.button.x, event.button.y);
+					fprintf(stderr, "\rbutton right@(%d,%d)\n", event.button.x, event.button.y);
 					break;
 				case ZDL_BUTTON_MIDDLE:
-					fprintf(stderr, "button middle@(%d,%d)\n", event.button.x, event.button.y);
+					fprintf(stderr, "\rbutton middle@(%d,%d)\n", event.button.x, event.button.y);
 					break;
 				case ZDL_BUTTON_MWDOWN:
-					fprintf(stderr, "button wheel-down@(%d,%d)\n", event.button.x, event.button.y);
+					fprintf(stderr, "\rbutton wheel-down@(%d,%d)\n", event.button.x, event.button.y);
 					break;
 				case ZDL_BUTTON_MWUP:
-					fprintf(stderr, "button wheel-up@(%d,%d)\n", event.button.x, event.button.y);
+					fprintf(stderr, "\rbutton wheel-up@(%d,%d)\n", event.button.x, event.button.y);
 					break;
 				}
 				break;
 			case ZDL_EVENT_MOTION:
-				//fprintf(stderr, "motion (%d,%d)\n", event.motion.d_x, event.motion.d_y);
+				//fprintf(stderr, "\rmotion (%d,%d)\n", event.motion.d_x, event.motion.d_y);
 				break;
 			case ZDL_EVENT_EXIT:
 				done = 1;
@@ -105,7 +144,7 @@ int main(int argc, char **argv)
 			case ZDL_EVENT_RECONFIGURE:
 				w = event.reconfigure.width;
 				h = event.reconfigure.height;
-				fprintf(stderr, "resize (%d,%d)\n", w, h);
+				fprintf(stderr, "\rresize (%d,%d)\n", w, h);
 				glViewport(0, 0, w, h);
 				break;
 			default:
@@ -120,12 +159,9 @@ int main(int argc, char **argv)
 		glLoadIdentity();
 		glOrtho(0.0f,w,h,0.0f,1.0f,-1.0f);
 
-		//glMatrixMode(GL_MODELVIEW);
-		//glLoadIdentity();
-
 		glBegin(GL_QUADS);
 			glColor3f(1.0f,0.0f,0.0f);
-			
+
 			float fw = (float)w, fh = (float)h;
 			glVertex2f(0.0f,0.0f);
 			glVertex2f(fw,   0.0f);
@@ -141,8 +177,9 @@ int main(int argc, char **argv)
 
 		glEnd();
 
-		delay(16666);
 		window->swap();
+		if (tracker.update(100, fps))
+			fprintf(stderr, "\r%3d fps ", fps);
 	}
 
 	delete window;
