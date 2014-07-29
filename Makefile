@@ -1,19 +1,24 @@
 CFLAGS := -Wall -fPIC -g
 CXXFLAGS := $(CFLAGS)
-SO_LDFLAGS := -shared -lGL -lX11
-T_LDFLAGS := -L. -lzdl
+LDFLAGS := -lGL -lX11
+SO_LDFLAGS := -shared $(LDFLAGS)
+T_LDFLAGS := -L. -lzdl $(LDFLAGS)
 objs := zdl_xlib.o
 tgt := libzdl.so
 tst := zdltest
 
 all: $(tgt)
 
-$(tst): $(objs) test.o | $(tgt)
+$(tst): test.o | $(tgt)
 	$(CXX) -o $@ $^ $(T_LDFLAGS)
-	#LD_LIBRARY_PATH=. ./$@
+
+test: $(tst)
+	LD_LIBRARY_PATH=. ./$(tst)
 
 $(tgt): $(objs)
 	$(CC) -o $@ $^ $(SO_LDFLAGS)
 
 clean:
-	$(RM) $(tgt) $(objs) test.o
+	$(RM) $(tgt) $(tst) $(objs) test.o
+
+.PHONY: test clean
